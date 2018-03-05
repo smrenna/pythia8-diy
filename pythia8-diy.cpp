@@ -1,0 +1,391 @@
+
+#include <cmath>
+#include <vector>
+#include <array>
+#include <algorithm>
+#include <functional>
+#include <numeric>
+#include <stdexcept>
+#include <random>
+#include <typeinfo>
+
+#include <diy/master.hpp>
+#include <diy/reduce.hpp>
+#include <diy/partners/merge.hpp>
+#include <diy/decomposition.hpp>
+#include <diy/assigner.hpp>
+#include <diy/mpi.hpp>
+#include <diy/serialization.hpp>
+
+#include "config.hpp"
+#include "GenericBlock.hpp"
+#include "Reduce.hpp"
+#include "CalcConfig.hpp"
+
+#include "YODA/ReaderYODA.h"
+#include "YODA/WriterYODA.h"
+#include "YODA/AnalysisObject.h"
+
+#include "Pythia8/Pythia.h"
+#include "Pythia8Plugins/HepMC2.h"
+#include "Rivet/AnalysisHandler.hh"
+#undef foreach // This line prevents a clash of definitions of rivet's legacy foreach with that of DIY
+
+#include "HepMC/IO_GenEvent.h"
+
+using namespace std;
+using namespace Pythia8;
+#include "opts.h"
+
+using namespace std;
+
+/*
+  Note: This is not done.  The reduction is across all configurations.   
+  It really needs to be only over same physics / model space parameters.
+  Discussed doing this by constructing a custom neighbor relationship
+  that only include like physics and model space parameters. 
+
+  Templates that handle standard boilderplate code are needed for:
+  1) blocks
+  2) management of master, assigner, and decomposer
+  3) reduction operation
+  4) perhaps defining custom data types to be sent around (see PointConfig)
+  5) helpers for the "foreach" processing
+ */
+
+typedef diy::DiscreteBounds Bounds;
+typedef diy::RegularGridLink RCLink;
+
+typedef std::vector<float> Weights;
+
+typedef std::shared_ptr<YODA::AnalysisObject> AO_ptr;
+typedef std::vector<AO_ptr> AnalysisObjects;
+
+// ----This is common to all introduced types - can it be automated? ------
+namespace diy {
+  template <> struct Serialization<PointConfig>
+  {
+    static void save(diy::BinaryBuffer& bb, const PointConfig& m)
+    { diy::save(bb, &m,sizeof(PointConfig)); }
+    static void load(diy::BinaryBuffer& bb, PointConfig& m)
+    { diy::load(bb, &m, sizeof(PointConfig)); }
+  };
+
+  template <> struct Serialization<AnalysisObjects>
+  {
+    typedef AnalysisObjects::value_type::element_type data_type;
+    typedef std::vector<data_type*> Ptrs;
+    
+    static void save(diy::BinaryBuffer& bb, AnalysisObjects const& m)
+    { 
+      std::ostringstream stream;
+      Ptrs out(m.size());
+      std::transform(std::cbegin(m),std::cend(m), std::begin(out),
+		     [](AnalysisObjects::value_type const& x) { return x.get(); });
+      YODA::WriterYODA::write(stream, out);
+      std::string s = stream.str();
+      
+      diy::save(bb, s.size()); 
+      diy::save(bb, s.c_str(), s.size()); 
+    }
+    static void load(diy::BinaryBuffer& bb, AnalysisObjects& m)
+    {
+      size_t sz;
+      diy::load(bb,sz); // sz is a return argument
+      std::string str;
+      str.resize(sz); // TODO use Marc's way
+      
+      diy::load(bb, str.data(), sz); 
+      std::istringstream stream(str);
+      auto tmp = YODA::ReaderYODA::read(stream);
+      AnalysisObjects in(tmp.begin(),tmp.end());
+      m.swap(in);
+    }
+  };
+
+  namespace mpi {
+    namespace detail {
+      template<> struct mpi_datatype<PointConfig>
+      {
+	static MPI_Datatype datatype() { return MPI_BYTE; }
+	static const void* address(PointConfig const& x) { return &x; }
+	static void* address(PointConfig& x) { return &x; }
+	static int count(PointConfig const&)
+	{ return sizeof(PointConfig); }
+      };
+    }
+  }
+ }
+
+// should be able to define
+// operator+(AnalysisObject_ptr, AnalysisObject_ptr)
+// here and the generic reduce should work.
+
+namespace YODA {
+template <typename T>
+bool addThisKind(AO_ptr& copy, AO_ptr const& other)
+{
+  auto const& bt = other.get();
+
+  if(typeid(*bt).hash_code() == typeid(T).hash_code())
+    {
+      auto& nh = dynamic_cast<T&>(*copy);
+      auto& bh = dynamic_cast<T&>(*other); // Cannot be const when calling scaleW
+      double rescale=1.;
+      if (nh.hasAnnotation("ScaledBy"))
+      {
+        double sc_n = std::stod(nh.annotation("ScaledBy"));
+        double sc_b = std::stod(bh.annotation("ScaledBy"));
+        rescale = 1. / (1./sc_n + 1./sc_b);
+
+        // Unscale before adding
+        nh.scaleW(1./sc_n);
+        bh.scaleW(1./sc_b);
+           
+      }
+      nh+=bh;
+      // Rescale
+      nh.scaleW(rescale);
+      return true;
+    }
+  else
+    return false;
+}
+}
+
+template <typename T>
+bool addCounter(AO_ptr& copy, AO_ptr const& other)
+{
+  auto const& bt = other.get();
+
+  if(typeid(*bt).hash_code() == typeid(T).hash_code())
+    {
+      auto& nh = dynamic_cast<T&>(*copy);
+      auto& bh = dynamic_cast<T&>(*other);
+      nh+=bh;
+      return true;
+    }
+  else
+    return false;
+}
+
+// Scatters do not have a += operator as the operation
+// is not well defined
+template <typename T>
+bool addScatters(AO_ptr& copy, AO_ptr const& other)
+{
+  auto const& bt = other.get();
+
+  if(typeid(*bt).hash_code() == typeid(T).hash_code())
+    {
+      auto& nh = dynamic_cast<T&>(*copy);
+      auto const& bh = dynamic_cast<T&>(*other);
+     std::cerr << "Warning, no operator += defined for " << bt->type() << "\n";
+      return true;
+    }
+  else
+    return false;
+}
+
+namespace YODA {
+AO_ptr operator+(AO_ptr const& a, AO_ptr const& b)
+{
+  AO_ptr n(a->newclone());
+  
+  if(!addThisKind<YODA::Histo1D>(n,b)   &&
+     !addThisKind<YODA::Histo2D>(n,b)   &&
+     !addThisKind<YODA::Profile1D>(n,b) &&
+     !addThisKind<YODA::Profile2D>(n,b) &&
+     !addCounter<YODA::Counter>(n,b)   &&
+     !addScatters<YODA::Scatter1D>(n,b) &&
+     !addScatters<YODA::Scatter2D>(n,b) &&
+     !addScatters<YODA::Scatter3D>(n,b))
+      {
+	std::cerr << "in op+ - but no match!!\n";
+	throw std::runtime_error("no YODA type match in op+");
+      }
+  
+  return n;
+}
+}
+
+typedef GenericBlock<Bounds, PointConfig, AnalysisObjects> Block;
+typedef ConfigBlockAdder<Bounds, RCLink, Block, PointConfigs> AddBlock;
+
+  
+void print_block(Block* b,                             // local block
+                 const diy::Master::ProxyWithLink& cp, // communication proxy
+                 bool verbose)                         // user-defined additional arguments
+{
+  if (verbose && cp.gid() == 0)
+    {
+      //      for (size_t i = 0; i < b->data.size(); ++i)
+      //fmt::print(stderr, "({},{}) ", b->data[i], b->buffer[i]);
+      //fmt::print(stderr, "\n");
+    }
+}
+
+void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank)
+{
+    b->pythia.readString("Print:quiet = on");
+    b->pythia.readString("Random:setSeed = on");
+    b->pythia.readString("Beams:idA = 11");
+    b->pythia.readString("Beams:idB = -11");
+    b->pythia.readString("Beams:eCM = 91.2");
+    b->pythia.readString("WeakSingleBoson:ffbar2gmZ = on");
+
+    b->pythia.readString("Random:setSeed = on");
+    std::string seedConf("Random:seed = " + std::to_string(rank));
+    b->pythia.readString(seedConf);
+
+
+    b->pythia.readString("Main:numberOfEvents = 10000");
+    //
+    int nEvents = b->pythia.mode("Main:numberOfEvents");
+    fmt::print(stderr, "Set seed to {}\n", rank);
+    fmt::print(stderr, "Set nevents to {}\n", nEvents);
+    b->pythia.init();
+
+    //b->ah.addAnalysis("MC_XS");
+    b->ah.addAnalysis("DELPHI_1996_S3430090");
+
+    for (int iEvent = 0; iEvent < nEvents; ++iEvent) {
+      // Generate events. Quit if many failures.
+      if (!b->pythia.next()) {
+        //if (++iAbort < nAbort) continue;
+        //cout << " Event generation aborted prematurely, owing to error!\n";
+        break;
+      }
+      HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
+      b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
+
+      try {b->ah.analyze( *hepmcevt ) ;} catch (const std::exception& e) 
+      {
+        fmt::print(stderr, "[{}] exception in analyze: {}\n", cp.gid(), e.what());
+      }
+      delete hepmcevt;
+     //fmt::print(stderr, "[{} event {}/{}\n", cp.gid(), iEvent+1, nEvents);
+    }
+    b->ah.setCrossSection(b->pythia.info.sigmaGen() * 1.0E9);  
+    b->ah.finalize();
+    b->data = b->ah.getData();
+    YODA::WriterYODA::write("testOut_rank" +std::to_string(rank) + ".yoda", b->data);
+    fmt::print(stderr, "[{}] finalised\n", cp.gid());
+}
+
+
+void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int rank)
+{
+   if (rank==0 && cp.gid()==0) {
+      YODA::WriterYODA::write("testOut.yoda", b->buffer);
+   }
+}
+
+// --- main program ---//
+
+
+const PointConfigs pc = { {1,10000, 1,1} };//, {2,20000, 2,1},
+		     //{3,10000, 3,1}, {4,15000, 4,1} };
+
+const Weights time_weights = { 1.21};//, 1.43, 2.13, 0.54 }; 
+
+int main(int argc, char* argv[])
+{
+  diy::mpi::environment env(argc, argv); 
+  diy::mpi::communicator world;
+
+  int mem_blocks  = -1;  // all blocks in memory, if value here then that is how many are in memory
+  int threads = atoi(argv[1]); //5;  
+  int dim = 1;
+  size_t blocks = world.size() * threads;
+
+  PointConfigs revised;
+
+  if( world.rank()==0 )
+    {
+      revised = calculate_block_configs(pc, time_weights, blocks);
+    }
+
+  diy::mpi::broadcast(world, revised, 0);
+
+  if(world.rank()==0)
+    {
+      for(size_t it=0;it<blocks;++it)
+	{
+	  cout << revised[it].psp_id << " " << revised[it].num_events << " "
+	       << revised[it].seed << " " << revised[it].physics_id << "\n";
+	}
+    }
+
+  // -------- above this point is all initialization custom for this application
+
+  // probably do not need this if the domain is used (Bounds)
+  // which of the blocks are mine?
+  auto interval = blocks/world.size();
+  auto my_ndx = interval*(world.rank());
+  auto my_start = std::cbegin(revised)+my_ndx;
+  auto my_end = (world.rank()==world.size()-1) ? std::end(revised) : my_start+interval;
+  
+  // ----- starting here is a lot of standard boilerplate code for this kind of
+  //       application.
+  
+  // diy initialization
+  diy::FileStorage storage("./DIY.XXXXXX"); // used for blocks moved out of core
+  diy::Master master(world, // master is the top-level diy object
+		     threads,
+		     mem_blocks,
+		     &Block::create, &Block::destroy,
+		     &storage,
+		     &Block::save, &Block::load);
+
+  // an object for adding new blocks to master
+  std::cout << "create being made" << std::endl;
+  AddBlock create(master, my_start, my_end);
+  
+  //  -------
+
+  // changed to discrete bounds and give range of revised
+  // set some global data bounds
+  // each block is given the configuration slot it processes
+  Bounds domain;
+  for (int i = 0; i < dim; ++i)
+    {
+      domain.min[i] = 0;
+      domain.max[i] = revised.size()-1;
+    }
+  
+  // choice of contiguous or round robin assigner
+  diy::ContiguousAssigner   assigner(world.size(), blocks);
+  
+  // decompose the domain into blocks
+  // This is a DIY regular way to assign neighbors. You can do this manually.
+  diy::RegularDecomposer<Bounds> decomposer(dim, domain, blocks);
+  decomposer.decompose(world.rank(), assigner, create);
+
+  // ----------- below is the processing for this application
+  // threads active here
+  master.foreach([world](Block* b, const diy::Master::ProxyWithLink& cp)
+  		 {process_block(b, cp, world.rank()); });
+
+   //this is MPI
+   //merge-based reduction: create the partners that determine how groups are formed
+   //in each round and then execute the reduction
+  int k = 2;       // the radix of the k-ary reduction tree
+  // partners for merge over regular block grid
+  diy::RegularMergePartners  partners(decomposer,  // domain decomposition
+                                      k,           // radix of k-ary reduction
+                                      true); // contiguous = true: distance doubling
+  // contiguous = false: distance halving
+  // reduction
+  // this assumes that all blocks are participating in the reduction
+  diy::reduce(master,              // Master object
+              assigner,            // Assigner object
+              partners,            // RegularMergePartners object
+              &reduceData<Block>);
+
+  // This is where the write out happens
+  master.foreach([world](Block* b, const diy::Master::ProxyWithLink& cp)
+                 { write_yoda(b, cp, world.rank()); });
+
+  return 0;
+}
