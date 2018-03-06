@@ -130,22 +130,17 @@ bool addThisKind(AO_ptr& copy, AO_ptr const& other)
   if(typeid(*bt).hash_code() == typeid(T).hash_code())
     {
       auto& nh = dynamic_cast<T&>(*copy);
-      auto& bh = dynamic_cast<T&>(*other); // Cannot be const when calling scaleW
-      double rescale=1.;
-      if (nh.hasAnnotation("ScaledBy"))
-      {
-        double sc_n = std::stod(nh.annotation("ScaledBy"));
-        double sc_b = std::stod(bh.annotation("ScaledBy"));
-        rescale = 1. / (1./sc_n + 1./sc_b);
-
-        // Unscale before adding
-        nh.scaleW(1./sc_n);
-        bh.scaleW(1./sc_b);
-           
-      }
+      auto const& bh = dynamic_cast<T&>(*other); // Cannot be const when calling scaleW
+      //std::cerr << "THIS IS " << nh.name() <<std::endl; 
       nh+=bh;
-      // Rescale
-      nh.scaleW(rescale);
+      if (nh.hasAnnotation("OriginalScaledBy") and nh.name() == "d02-x01-y01")
+      {
+         std::cerr << "Before " <<nh.annotation("OriginalScaledBy") <<"\n";
+        double sc_n = std::stod(nh.annotation("OriginalScaledBy"));
+        double sc_b = std::stod(bh.annotation("OriginalScaledBy"));
+        nh.setAnnotation("OriginalScaledBy", sc_n+sc_b);
+         std::cerr << "After " <<nh.annotation("OriginalScaledBy") <<"\n";
+      }
       return true;
     }
   else
@@ -196,7 +191,7 @@ AO_ptr operator+(AO_ptr const& a, AO_ptr const& b)
      !addThisKind<YODA::Histo2D>(n,b)   &&
      !addThisKind<YODA::Profile1D>(n,b) &&
      !addThisKind<YODA::Profile2D>(n,b) &&
-     !addCounter<YODA::Counter>(n,b)   &&
+     !addCounter<YODA::Counter>(n,b)    &&
      !addScatters<YODA::Scatter1D>(n,b) &&
      !addScatters<YODA::Scatter2D>(n,b) &&
      !addScatters<YODA::Scatter3D>(n,b))
@@ -239,7 +234,7 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank)
     b->pythia.readString(seedConf);
 
 
-    b->pythia.readString("Main:numberOfEvents = 10000");
+    b->pythia.readString("Main:numberOfEvents = 1000");
     //
     int nEvents = b->pythia.mode("Main:numberOfEvents");
     fmt::print(stderr, "Set seed to {}\n", rank);
@@ -247,7 +242,8 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank)
     b->pythia.init();
 
     //b->ah.addAnalysis("MC_XS");
-    b->ah.addAnalysis("DELPHI_1996_S3430090");
+    //b->ah.addAnalysis("DELPHI_1996_S3430090");
+    b->ah.addAnalysis("DELPHI_1991_I301657");
 
     for (int iEvent = 0; iEvent < nEvents; ++iEvent) {
       // Generate events. Quit if many failures.
@@ -269,14 +265,50 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank)
     b->ah.setCrossSection(b->pythia.info.sigmaGen() * 1.0E9);  
     b->ah.finalize();
     b->data = b->ah.getData();
+    
+    // Write out so we can sanity check with yodamerge
     YODA::WriterYODA::write("testOut_rank" +std::to_string(rank) + ".yoda", b->data);
+   
+    // This is a bit annoying --- we need to unscale Histo1D and Histo2D beforge the reduction
+    for (auto ao : b->data) {
+      if (ao->hasAnnotation("ScaledBy"))
+      {
+        double sc = std::stod(ao->annotation("ScaledBy"));
+        if (ao->type()=="Histo1D") 
+        {
+           dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
+           dynamic_cast<YODA::Histo1D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+        }
+        else if (ao->type()=="Histo2D") 
+        {
+           dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
+           dynamic_cast<YODA::Histo2D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+        }
+      }
+    }
     fmt::print(stderr, "[{}] finalised\n", cp.gid());
 }
 
 
 void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int rank)
 {
-   if (rank==0 && cp.gid()==0) {
+  if (rank==0 && cp.gid()==0) {
+     for (auto ao : b->buffer) {
+        if (ao->hasAnnotation("OriginalScaledBy"))
+        {
+          double sc = std::stod(ao->annotation("OriginalScaledBy"));
+          std::cerr << ao->name() << " " << sc <<"\n";
+          if (ao->type()=="Histo1D") 
+          {
+             dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
+             std::cerr << " entries: " << dynamic_cast<YODA::Histo1D&>(*ao).effNumEntries() << "\n";
+          }
+          else if (ao->type()=="Histo2D") 
+          {
+             dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
+          }
+        }
+     }
       YODA::WriterYODA::write("testOut.yoda", b->buffer);
    }
 }
