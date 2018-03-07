@@ -131,15 +131,12 @@ bool addThisKind(AO_ptr& copy, AO_ptr const& other)
     {
       auto& nh = dynamic_cast<T&>(*copy);
       auto const& bh = dynamic_cast<T&>(*other); // Cannot be const when calling scaleW
-      //std::cerr << "THIS IS " << nh.name() <<std::endl; 
       nh+=bh;
-      if (nh.hasAnnotation("OriginalScaledBy") and nh.name() == "d02-x01-y01")
+      if (nh.hasAnnotation("OriginalScaledBy"))
       {
-         std::cerr << "Before " <<nh.annotation("OriginalScaledBy") <<"\n";
         double sc_n = std::stod(nh.annotation("OriginalScaledBy"));
         double sc_b = std::stod(bh.annotation("OriginalScaledBy"));
         nh.setAnnotation("OriginalScaledBy", sc_n+sc_b);
-         std::cerr << "After " <<nh.annotation("OriginalScaledBy") <<"\n";
       }
       return true;
     }
@@ -152,7 +149,6 @@ template <typename T>
 bool addCounter(AO_ptr& copy, AO_ptr const& other)
 {
   auto const& bt = other.get();
-
   if(typeid(*bt).hash_code() == typeid(T).hash_code())
     {
       auto& nh = dynamic_cast<T&>(*copy);
@@ -219,9 +215,24 @@ void print_block(Block* b,                             // local block
       //fmt::print(stderr, "\n");
     }
 }
+void process_dummy_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank)
+{
+   
+   b->data.emplace_back( new YODA::Counter(cp.gid()) );
+   auto& nh = dynamic_cast<YODA::Counter&>(*b->data[0]);
+   //static_cast<std::shared_ptr<YODA::Counter> >(b->data[0])+=cp.gid();
+   //YODA::Histo1D test(1,0,1);
+   //test.fill(0,cp.gid());
+   //std::vector<std::shared_ptr<YODA::AnalysisObject>> v_test;
+   //v_test.push_back(dynamic_cast<std::shared_ptr<YODA::AnalysisObject>>(&test));
+    //b->data = v_test;
+    fmt::print(stderr, "[{}] finalised\n", cp.gid());
+}
 
 void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank)
 {
+   //b->gid = cp.gid();
+   //std::cerr << "set block gid to " << b->gid << "\n";
     b->pythia.readString("Print:quiet = on");
     b->pythia.readString("Random:setSeed = on");
     b->pythia.readString("Beams:idA = 11");
@@ -234,16 +245,16 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank)
     b->pythia.readString(seedConf);
 
 
-    b->pythia.readString("Main:numberOfEvents = 1000");
+    b->pythia.readString("Main:numberOfEvents = 100");
     //
     int nEvents = b->pythia.mode("Main:numberOfEvents");
-    fmt::print(stderr, "Set seed to {}\n", rank);
-    fmt::print(stderr, "Set nevents to {}\n", nEvents);
+    //fmt::print(stderr, "Set seed to {}\n", rank);
+    //fmt::print(stderr, "Set nevents to {}\n", nEvents);
     b->pythia.init();
 
     //b->ah.addAnalysis("MC_XS");
-    //b->ah.addAnalysis("DELPHI_1996_S3430090");
-    b->ah.addAnalysis("DELPHI_1991_I301657");
+    b->ah.addAnalysis("DELPHI_1996_S3430090");
+    //b->ah.addAnalysis("DELPHI_1991_I301657");
 
     for (int iEvent = 0; iEvent < nEvents; ++iEvent) {
       // Generate events. Quit if many failures.
@@ -267,7 +278,7 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank)
     b->data = b->ah.getData();
     
     // Write out so we can sanity check with yodamerge
-    YODA::WriterYODA::write("testOut_rank" +std::to_string(rank) + ".yoda", b->data);
+    //YODA::WriterYODA::write("testOut_rank" +std::to_string(rank) + ".yoda", b->data);
    
     // This is a bit annoying --- we need to unscale Histo1D and Histo2D beforge the reduction
     for (auto ao : b->data) {
@@ -297,11 +308,9 @@ void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int rank)
         if (ao->hasAnnotation("OriginalScaledBy"))
         {
           double sc = std::stod(ao->annotation("OriginalScaledBy"));
-          std::cerr << ao->name() << " " << sc <<"\n";
           if (ao->type()=="Histo1D") 
           {
              dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
-             std::cerr << " entries: " << dynamic_cast<YODA::Histo1D&>(*ao).effNumEntries() << "\n";
           }
           else if (ao->type()=="Histo2D") 
           {
@@ -397,7 +406,9 @@ int main(int argc, char* argv[])
   // ----------- below is the processing for this application
   // threads active here
   master.foreach([world](Block* b, const diy::Master::ProxyWithLink& cp)
-  		 {process_block(b, cp, world.rank()); });
+                   {process_block(b, cp, world.rank()); });
+                   //{process_dummy_block(b, cp, world.rank()); });
+  //return 0;
 
    //this is MPI
    //merge-based reduction: create the partners that determine how groups are formed

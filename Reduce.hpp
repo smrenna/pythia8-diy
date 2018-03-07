@@ -23,7 +23,10 @@ void reduceData(B* b,
   typedef typename std::remove_const<const_type>::type data_type;
   unsigned round = rp.round(); // current round number
   // can accumulate into the local variable and then enqueue that.
-  data_type in_vals(b->reduceData());
+  if(b->reduceBuffer().size()!=b->reduceData().size())
+    b->reduceBuffer() = b->reduceData();
+  
+  data_type& in_vals(b->reduceBuffer()); //reduceData());
 
   // step 1: dequeue and merge
   for (int i=0; i < rp.in_link().size(); ++i)
@@ -35,9 +38,9 @@ void reduceData(B* b,
       rp.dequeue(nbr_gid, tmp);
       typename data_type::value_type h = in_vals[0];
       B::reduce(in_vals, tmp);
-      //fmt::print("dequeue action {}: {} {} {} {}\n",rp.gid(),h,tmp[0], in_vals[0], round);
+      //fmt::print("dequeue action {}: {} {} {} {} {}\n",rp.gid(),nbr_gid,h,tmp[0], in_vals[0], round);
     }
-  
+
   // step 2: enqueue
   for (int i=0; i < rp.out_link().size(); ++i) // redundant since size should equal to 1
     {
@@ -48,7 +51,7 @@ void reduceData(B* b,
 	  //fmt::print("equeue action {}: {} {}\n",rp.gid(),in_vals[0], round);
 	}
     }
-  b->reduceBuffer().swap(in_vals);
+  //b->reduceBuffer().swap(in_vals);
 }
 
 // diy::decompose needs to have a function defined to create a block
