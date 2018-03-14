@@ -89,3 +89,23 @@ PointConfigs calculate_block_configs(PointConfigs const& pc, Weights const& time
     }
   return std::move(revised);
 }
+
+// This function calculates how many blocks we need to accumulate
+// the desired number of events given number of available ranks
+// for one physics configuration.
+PointConfigs mkSingleRunConfigs(size_t n_ranks, size_t n_events_per_job, size_t n_events)//, std::string out_file)
+{
+  PointConfigs revised;
+
+  auto n_perrank = ceil(n_events/n_ranks);
+
+  auto n_blocks = n_ranks;
+
+ 
+  for (size_t i=0; i<n_blocks;++i)
+  {
+   int seed = i + 1234;
+   revised.push_back({ 1, static_cast<size_t>(n_perrank), seed, 1});
+  }
+  return std::move(revised);
+}

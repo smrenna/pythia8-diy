@@ -171,7 +171,7 @@ bool addScatters(AO_ptr& copy, AO_ptr const& other)
     {
       auto& nh = dynamic_cast<T&>(*copy);
       auto const& bh = dynamic_cast<T&>(*other);
-     std::cerr << "Warning, no operator += defined for " << bt->type() << "\n";
+     //std::cerr << "Warning, no operator += defined for " << bt->type() << "\n";
       return true;
     }
   else
@@ -215,24 +215,9 @@ void print_block(Block* b,                             // local block
       //fmt::print(stderr, "\n");
     }
 }
-void process_dummy_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank)
-{
-   
-   b->data.emplace_back( new YODA::Counter(cp.gid()) );
-   auto& nh = dynamic_cast<YODA::Counter&>(*b->data[0]);
-   //static_cast<std::shared_ptr<YODA::Counter> >(b->data[0])+=cp.gid();
-   //YODA::Histo1D test(1,0,1);
-   //test.fill(0,cp.gid());
-   //std::vector<std::shared_ptr<YODA::AnalysisObject>> v_test;
-   //v_test.push_back(dynamic_cast<std::shared_ptr<YODA::AnalysisObject>>(&test));
-    //b->data = v_test;
-    fmt::print(stderr, "[{}] finalised\n", cp.gid());
-}
 
-void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank)
+void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> analyses)
 {
-   //b->gid = cp.gid();
-   //std::cerr << "set block gid to " << b->gid << "\n";
     b->pythia.readString("Print:quiet = on");
     b->pythia.readString("Random:setSeed = on");
     b->pythia.readString("Beams:idA = 11");
@@ -240,21 +225,22 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank)
     b->pythia.readString("Beams:eCM = 91.2");
     b->pythia.readString("WeakSingleBoson:ffbar2gmZ = on");
 
+    // Py8 random seed for this block read from point config
     b->pythia.readString("Random:setSeed = on");
-    std::string seedConf("Random:seed = " + std::to_string(rank));
+    std::string seedConf("Random:seed = " + std::to_string(b->state.seed));
     b->pythia.readString(seedConf);
 
-
-    b->pythia.readString("Main:numberOfEvents = 100");
+    
+    b->pythia.readString("Main:numberOfEvents = " + std::to_string(b->state.num_events));
     //
     int nEvents = b->pythia.mode("Main:numberOfEvents");
-    //fmt::print(stderr, "Set seed to {}\n", rank);
-    //fmt::print(stderr, "Set nevents to {}\n", nEvents);
     b->pythia.init();
 
-    //b->ah.addAnalysis("MC_XS");
-    b->ah.addAnalysis("DELPHI_1996_S3430090");
-    //b->ah.addAnalysis("DELPHI_1991_I301657");
+    for (auto a : analyses) 
+    {
+       //std::cerr << "Adding analysis " << a <<"\n";
+       b->ah.addAnalysis(a);
+    }
 
     for (int iEvent = 0; iEvent < nEvents; ++iEvent) {
       // Generate events. Quit if many failures.
@@ -271,14 +257,12 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank)
         fmt::print(stderr, "[{}] exception in analyze: {}\n", cp.gid(), e.what());
       }
       delete hepmcevt;
-     //fmt::print(stderr, "[{} event {}/{}\n", cp.gid(), iEvent+1, nEvents);
     }
     b->ah.setCrossSection(b->pythia.info.sigmaGen() * 1.0E9);  
     b->ah.finalize();
     b->data = b->ah.getData();
     
     // Write out so we can sanity check with yodamerge
-    //YODA::WriterYODA::write("testOut_rank" +std::to_string(rank) + ".yoda", b->data);
    
     // This is a bit annoying --- we need to unscale Histo1D and Histo2D beforge the reduction
     for (auto ao : b->data) {
@@ -301,134 +285,147 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank)
 }
 
 
-void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int rank)
+void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, std::string out_file, int rank)
 {
   if (rank==0 && cp.gid()==0) {
-     for (auto ao : b->buffer) {
-        if (ao->hasAnnotation("OriginalScaledBy"))
-        {
-          double sc = std::stod(ao->annotation("OriginalScaledBy"));
-          if (ao->type()=="Histo1D") 
-          {
-             dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
-          }
-          else if (ao->type()=="Histo2D") 
-          {
-             dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
-          }
-        }
-     }
-      YODA::WriterYODA::write("testOut.yoda", b->buffer);
-   }
+    for (auto ao : b->buffer) {
+       if (ao->hasAnnotation("OriginalScaledBy"))
+       {
+         double sc = std::stod(ao->annotation("OriginalScaledBy"));
+         if (ao->type()=="Histo1D") 
+         {
+            dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
+         }
+         else if (ao->type()=="Histo2D") 
+         {
+            dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
+         }
+       }
+    }
+    YODA::WriterYODA::write(out_file, b->buffer);
+  }
 }
 
 // --- main program ---//
-
-
-const PointConfigs pc = { {1,10000, 1,1} };//, {2,20000, 2,1},
-		     //{3,10000, 3,1}, {4,15000, 4,1} };
-
-const Weights time_weights = { 1.21};//, 1.43, 2.13, 0.54 }; 
-
 int main(int argc, char* argv[])
 {
-  diy::mpi::environment env(argc, argv); 
-  diy::mpi::communicator world;
+    diy::mpi::environment env(argc, argv); 
+    diy::mpi::communicator world;
 
-  int mem_blocks  = -1;  // all blocks in memory, if value here then that is how many are in memory
-  int threads = atoi(argv[1]); //5;  
-  int dim = 1;
-  size_t blocks = world.size() * threads;
-
-  PointConfigs revised;
-
-  if( world.rank()==0 )
+    int threads = 1;
+    int nEventsPerBlock=1000;
+    int nEvents=1000;
+    vector<std::string> analyses;
+    std::string out_file="diy.yoda";
+    // get command line arguments
+    using namespace opts;
+    Options ops(argc, argv);
+    bool                      verbose     = ops >> Present('v',
+                                                           "verbose",
+                                                           "verbose output");
+    ops >> Option('t', "thread",   threads,       "Number of threads");
+    ops >> Option('n', "nevents",  nEvents,       "Number of events to generate in total");
+    ops >> Option('a', "analysis",  analyses,       "Rivet analyses");
+    ops >> Option('m', "nmin",  nEventsPerBlock,  "Minimum number of events per block.");
+    ops >> Option('o', "output",  out_file,  "Output filename.");
+    if (ops >> Present('h', "help", "Show help"))
     {
-      revised = calculate_block_configs(pc, time_weights, blocks);
-    }
-
-  diy::mpi::broadcast(world, revised, 0);
-
-  if(world.rank()==0)
-    {
-      for(size_t it=0;it<blocks;++it)
-	{
-	  cout << revised[it].psp_id << " " << revised[it].num_events << " "
-	       << revised[it].seed << " " << revised[it].physics_id << "\n";
-	}
-    }
-
-  // -------- above this point is all initialization custom for this application
-
-  // probably do not need this if the domain is used (Bounds)
-  // which of the blocks are mine?
-  auto interval = blocks/world.size();
-  auto my_ndx = interval*(world.rank());
-  auto my_start = std::cbegin(revised)+my_ndx;
-  auto my_end = (world.rank()==world.size()-1) ? std::end(revised) : my_start+interval;
-  
-  // ----- starting here is a lot of standard boilerplate code for this kind of
-  //       application.
-  
-  // diy initialization
-  diy::FileStorage storage("./DIY.XXXXXX"); // used for blocks moved out of core
-  diy::Master master(world, // master is the top-level diy object
-		     threads,
-		     mem_blocks,
-		     &Block::create, &Block::destroy,
-		     &storage,
-		     &Block::save, &Block::load);
-
-  // an object for adding new blocks to master
-  std::cout << "create being made" << std::endl;
-  AddBlock create(master, my_start, my_end);
-  
-  //  -------
-
-  // changed to discrete bounds and give range of revised
-  // set some global data bounds
-  // each block is given the configuration slot it processes
-  Bounds domain;
-  for (int i = 0; i < dim; ++i)
-    {
-      domain.min[i] = 0;
-      domain.max[i] = revised.size()-1;
+        std::cout << "Usage: " << argv[0] << " [OPTIONS]\n";
+        std::cout << ops;
+        return 1;
     }
   
-  // choice of contiguous or round robin assigner
-  diy::ContiguousAssigner   assigner(world.size(), blocks);
-  
-  // decompose the domain into blocks
-  // This is a DIY regular way to assign neighbors. You can do this manually.
-  diy::RegularDecomposer<Bounds> decomposer(dim, domain, blocks);
-  decomposer.decompose(world.rank(), assigner, create);
+    int mem_blocks  = -1;  // all blocks in memory, if value here then that is how many are in memory
 
-  // ----------- below is the processing for this application
-  // threads active here
-  master.foreach([world](Block* b, const diy::Master::ProxyWithLink& cp)
-                   {process_block(b, cp, world.rank()); });
-                   //{process_dummy_block(b, cp, world.rank()); });
-  //return 0;
+    size_t blocks = world.size() * threads;
 
-   //this is MPI
-   //merge-based reduction: create the partners that determine how groups are formed
-   //in each round and then execute the reduction
-  int k = 2;       // the radix of the k-ary reduction tree
-  // partners for merge over regular block grid
-  diy::RegularMergePartners  partners(decomposer,  // domain decomposition
-                                      k,           // radix of k-ary reduction
-                                      true); // contiguous = true: distance doubling
-  // contiguous = false: distance halving
-  // reduction
-  // this assumes that all blocks are participating in the reduction
-  diy::reduce(master,              // Master object
-              assigner,            // Assigner object
-              partners,            // RegularMergePartners object
-              &reduceData<Block>);
+    PointConfigs revised;
 
-  // This is where the write out happens
-  master.foreach([world](Block* b, const diy::Master::ProxyWithLink& cp)
-                 { write_yoda(b, cp, world.rank()); });
+    if( world.rank()==0 )
+      {
+        revised = mkSingleRunConfigs(world.size()*threads,nEventsPerBlock, nEvents);
+      }
 
-  return 0;
+    diy::mpi::broadcast(world, revised, 0);
+
+    if(world.rank()==0)
+      {
+        for(size_t it=0;it<blocks;++it)
+  	{
+  	  cout << revised[it].psp_id << " " << revised[it].num_events << " "
+  	       << revised[it].seed << " " << revised[it].physics_id << "\n";
+  	}
+      }
+
+    // -------- above this point is all initialization custom for this application
+
+    // probably do not need this if the domain is used (Bounds)
+    // which of the blocks are mine?
+    auto interval = blocks/world.size();
+    auto my_ndx = interval*(world.rank());
+    auto my_start = std::cbegin(revised)+my_ndx;
+    auto my_end = (world.rank()==world.size()-1) ? std::end(revised) : my_start+interval;
+    
+    // ----- starting here is a lot of standard boilerplate code for this kind of
+    //       application.
+    
+    // diy initialization
+    diy::FileStorage storage("./DIY.XXXXXX"); // used for blocks moved out of core
+    diy::Master master(world, // master is the top-level diy object
+  		     threads,
+  		     mem_blocks,
+  		     &Block::create, &Block::destroy,
+  		     &storage,
+  		     &Block::save, &Block::load);
+
+    // an object for adding new blocks to master
+    AddBlock create(master, my_start, my_end);
+    
+    //  -------
+
+    int dim(1); // TODO get rid of this
+    // changed to discrete bounds and give range of revised
+    // set some global data bounds
+    // each block is given the configuration slot it processes
+    Bounds domain;
+    for (int i = 0; i < dim; ++i)
+      {
+        domain.min[i] = 0;
+        domain.max[i] = revised.size()-1;
+      }
+    
+    // choice of contiguous or round robin assigner
+    diy::ContiguousAssigner   assigner(world.size(), blocks);
+    
+    // decompose the domain into blocks
+    // This is a DIY regular way to assign neighbors. You can do this manually.
+    diy::RegularDecomposer<Bounds> decomposer(dim, domain, blocks);
+    decomposer.decompose(world.rank(), assigner, create);
+
+    // ----------- below is the processing for this application
+    // threads active here
+    master.foreach([world, analyses](Block* b, const diy::Master::ProxyWithLink& cp)
+                     {process_block(b, cp, world.rank(), analyses); });
+
+     //this is MPI
+     //merge-based reduction: create the partners that determine how groups are formed
+     //in each round and then execute the reduction
+    int k = 2;       // the radix of the k-ary reduction tree
+    // partners for merge over regular block grid
+    diy::RegularMergePartners  partners(decomposer,  // domain decomposition
+                                        k,           // radix of k-ary reduction
+                                        true); // contiguous = true: distance doubling
+    // contiguous = false: distance halving
+    // reduction
+    // this assumes that all blocks are participating in the reduction
+    diy::reduce(master,              // Master object
+                assigner,            // Assigner object
+                partners,            // RegularMergePartners object
+                &reduceData<Block>);
+
+    // This is where the write out happens
+    master.foreach([world,out_file](Block* b, const diy::Master::ProxyWithLink& cp)
+                   { write_yoda(b, cp, out_file, world.rank()); });
+
+    return 0;
 }
