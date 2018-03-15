@@ -218,6 +218,7 @@ void print_block(Block* b,                             // local block
 
 void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> analyses)
 {
+  Rivet::Log::setLevel("Rivet", Rivet::Log::ERROR);
     b->pythia.readString("Print:quiet = on");
     b->pythia.readString("Random:setSeed = on");
     b->pythia.readString("Beams:idA = 11");
@@ -254,7 +255,7 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std
 
       try {b->ah.analyze( *hepmcevt ) ;} catch (const std::exception& e) 
       {
-        fmt::print(stderr, "[{}] exception in analyze: {}\n", cp.gid(), e.what());
+     //   fmt::print(stderr, "[{}] exception in analyze: {}\n", cp.gid(), e.what());
       }
       delete hepmcevt;
     }
@@ -281,7 +282,7 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std
         }
       }
     }
-    fmt::print(stderr, "[{}] finalised\n", cp.gid());
+    //fmt::print(stderr, "[{}] finalised\n", cp.gid());
 }
 
 
@@ -348,14 +349,14 @@ int main(int argc, char* argv[])
 
     diy::mpi::broadcast(world, revised, 0);
 
-    if(world.rank()==0)
-      {
-        for(size_t it=0;it<blocks;++it)
-  	{
-  	  cout << revised[it].psp_id << " " << revised[it].num_events << " "
-  	       << revised[it].seed << " " << revised[it].physics_id << "\n";
-  	}
-      }
+//    if(world.rank()==0)
+ //     {
+  //      for(size_t it=0;it<blocks;++it)
+ // 	{
+ // 	  cout << revised[it].psp_id << " " << revised[it].num_events << " "
+ // 	       << revised[it].seed << " " << revised[it].physics_id << "\n";
+ // 	}
+  //    }
 
     // -------- above this point is all initialization custom for this application
 
