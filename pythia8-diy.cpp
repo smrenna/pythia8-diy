@@ -366,8 +366,8 @@ int main(int argc, char* argv[])
     // which of the blocks are mine?
     auto interval = blocks/world.size();
     auto my_ndx = interval*(world.rank());
-    auto my_start = std::cbegin(revised)+my_ndx;
-    auto my_end = (world.rank()==world.size()-1) ? std::end(revised) : my_start+interval;
+    auto my_start = revised.cbegin()+my_ndx;
+    auto my_end = (world.rank()==world.size()-1) ? revised.end() : my_start+interval;
     
     // ----- starting here is a lot of standard boilerplate code for this kind of
     //       application.

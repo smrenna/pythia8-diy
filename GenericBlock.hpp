@@ -58,8 +58,8 @@ struct GenericBlock
   // a = a + b    (might want to permit other combining function to be passed in here)
   static void reduce(data_type& a, data_type const& b)
   {
-    std::transform(cbegin(a),cend(a), cbegin(b),
-		   begin(a), std::plus<typename data_type::value_type>());    
+    std::transform(a.cbegin(),a.cend(), b.cbegin(),
+		   a.begin(), std::plus<typename data_type::value_type>());
   }
   // add "other" into my block data
   void reduce(data_type const& other) { reduce(data,other); }
