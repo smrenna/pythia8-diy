@@ -44,50 +44,50 @@ PointConfigs calculate_block_configs(PointConfigs const& pc, Weights const& time
 {
   PointConfigs revised;
   
-  // need weights, configs, blocks as input, PointConfigs as output
-  auto w_event_total = calc_sum(pc,time_weights);
-  auto tot_weights = std::accumulate(std::cbegin(time_weights),
-				     std::cend(time_weights),
-				     0.0f);
-  auto portions = calc_portions(w_event_total,tot_weights,
-				blocks,time_weights);
-  auto tot_needed = std::accumulate(std::cbegin(portions),
-				    std::cend(portions),
-				    0UL);
-  // if there are any zeros in the portions, then there are not enough blocks.
-  auto min_p = std::find(std::cbegin(portions),
-			 std::cend(portions),0UL);
+  //// need weights, configs, blocks as input, PointConfigs as output
+  //auto w_event_total = calc_sum(pc,time_weights);
+  //auto tot_weights = std::accumulate(time_weights.cbegin(),
+				     //time_weights.:cend(),
+				     //0.0f);
+  //auto portions = calc_portions(w_event_total,tot_weights,
+				//blocks,time_weights);
+  //auto tot_needed = std::accumulate(portions.cbegin(),
+				    //portions.cend(),
+				    //0UL);
+  //// if there are any zeros in the portions, then there are not enough blocks.
+  //auto min_p = std::find(std::cbegin(portions),
+			 //std::cend(portions),0UL);
   
-  if(time_weights.size() >blocks || min_p!=std::cend(portions) || tot_needed>blocks)
-    {
-      cerr << "too few blocks to process data.  Need at least "
-	   << time_weights.size() << "\n";
-      cerr << "or not enough blocks " << tot_needed << ">" << blocks << "\n";
-      throw std::runtime_error("cannot configure job for block count and threads");
-    }
+  //if(time_weights.size() >blocks || min_p!=std::cend(portions) || tot_needed>blocks)
+    //{
+      //cerr << "too few blocks to process data.  Need at least "
+	   //<< time_weights.size() << "\n";
+      //cerr << "or not enough blocks " << tot_needed << ">" << blocks << "\n";
+      //throw std::runtime_error("cannot configure job for block count and threads");
+    //}
   
-  // go through the point configs, figuring out how many blocks are
-  // needed for each one, given the max/block and weight constraints.
+  //// go through the point configs, figuring out how many blocks are
+  //// needed for each one, given the max/block and weight constraints.
   
-  auto per_block = [](size_t count, size_t blocks)
-    { return ceil(count / blocks); };
-  auto excess = [](size_t count, size_t blocks, size_t per)
-    { return (per * blocks) - count; };
+  //auto per_block = [](size_t count, size_t blocks)
+    //{ return ceil(count / blocks); };
+  //auto excess = [](size_t count, size_t blocks, size_t per)
+    //{ return (per * blocks) - count; };
   
-  size_t pos = 0;
-  for(size_t i=0;i<pc.size();++i)
-    {
-      auto events_per = per_block(pc[i].num_events, portions[i]);
-      auto over = excess(pc[i].num_events, portions[i], events_per);
+  //size_t pos = 0;
+  //for(size_t i=0;i<pc.size();++i)
+    //{
+      //auto events_per = per_block(pc[i].num_events, portions[i]);
+      //auto over = excess(pc[i].num_events, portions[i], events_per);
       
-      for(size_t j=0; j<portions[i]; ++j)
-	{
-	  revised.push_back({ pc[i].psp_id, static_cast<size_t>(events_per),
-		pc[i].seed, pc[i].physics_id });
-	  ++pos;
-	}
-      revised.back().num_events -= over;
-    }
+      //for(size_t j=0; j<portions[i]; ++j)
+	//{
+	  //revised.push_back({ pc[i].psp_id, static_cast<size_t>(events_per),
+		//pc[i].seed, pc[i].physics_id });
+	  //++pos;
+	//}
+      //revised.back().num_events -= over;
+    //}
   return std::move(revised);
 }
 
