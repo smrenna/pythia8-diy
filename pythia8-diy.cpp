@@ -316,6 +316,7 @@ int main(int argc, char* argv[])
     int threads = 1;
     int nEventsPerBlock=1000;
     int nEvents=1000;
+    size_t seed=1234;
     vector<std::string> analyses;
     std::string out_file="diy.yoda";
     // get command line arguments
@@ -329,6 +330,7 @@ int main(int argc, char* argv[])
     ops >> Option('a', "analysis",  analyses,       "Rivet analyses");
     ops >> Option('m', "nmin",  nEventsPerBlock,  "Minimum number of events per block.");
     ops >> Option('o', "output",  out_file,  "Output filename.");
+    ops >> Option('s', "seed",  seed,  "The Base seed.");
     if (ops >> Present('h', "help", "Show help"))
     {
         std::cout << "Usage: " << argv[0] << " [OPTIONS]\n";
@@ -344,19 +346,19 @@ int main(int argc, char* argv[])
 
     if( world.rank()==0 )
       {
-        revised = mkSingleRunConfigs(world.size()*threads,nEventsPerBlock, nEvents);
+        revised = mkSingleRunConfigs(world.size()*threads,nEventsPerBlock, nEvents, seed);
       }
 
     diy::mpi::broadcast(world, revised, 0);
 
-//    if(world.rank()==0)
- //     {
-  //      for(size_t it=0;it<blocks;++it)
- // 	{
- // 	  cout << revised[it].psp_id << " " << revised[it].num_events << " "
- // 	       << revised[it].seed << " " << revised[it].physics_id << "\n";
- // 	}
-  //    }
+    if(world.rank()==0 && verbose)
+      {
+        for(size_t it=0;it<blocks;++it)
+          {
+            cout << revised[it].psp_id << " " << revised[it].num_events << " "
+                 << revised[it].seed << " " << revised[it].physics_id << "\n";
+          }
+      }
 
     // -------- above this point is all initialization custom for this application
 

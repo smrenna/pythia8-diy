@@ -94,7 +94,7 @@ PointConfigs calculate_block_configs(PointConfigs const& pc, Weights const& time
 // This function calculates how many blocks we need to accumulate
 // the desired number of events given number of available ranks
 // for one physics configuration.
-PointConfigs mkSingleRunConfigs(size_t n_ranks, size_t n_events_per_job, size_t n_events)//, std::string out_file)
+PointConfigs mkSingleRunConfigs(size_t n_ranks, size_t n_events_per_job, size_t n_events, size_t base_seed)//, std::string out_file)
 {
   PointConfigs revised;
 
@@ -102,11 +102,21 @@ PointConfigs mkSingleRunConfigs(size_t n_ranks, size_t n_events_per_job, size_t 
 
   auto n_blocks = n_ranks;
 
- 
+
+  // Distribute the desdired number of events to the blocks
+  // The last block on occasion will have to generate slightly more events
+  // just so the total number of events is exactly what the user requests.
   for (size_t i=0; i<n_blocks;++i)
   {
-   int seed = i + 1234;
-   revised.push_back({ 1, static_cast<size_t>(n_perrank), seed, 1});
+    size_t seed = i + base_seed;
+    if (i==n_blocks-1)
+    {
+      revised.push_back({ 1, static_cast<size_t>(n_events - i*n_perrank), seed, 1});
+    }
+    else
+    {
+      revised.push_back({ 1, static_cast<size_t>(n_perrank), seed, 1});
+    }
   }
   return std::move(revised);
 }

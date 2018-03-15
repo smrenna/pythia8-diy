@@ -8,5 +8,5 @@ std::vector<PointConfig> calculate_block_configs(std::vector<PointConfig> const&
 						 std::vector<float> const& time_weights,
 						 size_t blocks);
 
-std::vector<PointConfig> mkSingleRunConfigs(size_t n_ranks, size_t n_events_per_job, size_t n_events);
+std::vector<PointConfig> mkSingleRunConfigs(size_t n_ranks, size_t n_events_per_job, size_t n_events, size_t base_seed);
 #endif
