@@ -1,6 +1,7 @@
 
 #include "CalcConfig.hpp"
 
+#include <iterator>
 #include <cmath>
 #include <numeric>
 #include <stdexcept>
