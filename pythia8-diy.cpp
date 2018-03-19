@@ -80,7 +80,7 @@ namespace diy {
     { 
       std::ostringstream stream;
       Ptrs out(m.size());
-      std::transform(std::cbegin(m),std::cend(m), std::begin(out),
+      std::transform(m.cbegin(), m.cend(), out.begin(),
 		     [](AnalysisObjects::value_type const& x) { return x.get(); });
       YODA::WriterYODA::write(stream, out);
       std::string s = stream.str();
@@ -307,6 +307,31 @@ void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, std::string out_
   }
 }
 
+
+// Read a config file, ignore empty lines and # commented lines
+bool readConfig(std::string fname, std::vector<std::string> & vconf)
+{
+     std::ifstream f(fname.c_str());
+
+     // Check if object is valid
+     if(!f)
+     {
+          std::cerr << "Error opening file '"<<fname<<"'\n";
+          return false;
+     }
+
+     std::string temp;
+     // Read the next line from File untill it reaches the end.
+     while (std::getline(f, temp))
+     {
+          // Line contains string of length > 0 then save it in vector
+          if(temp.size() > 0 && temp.find("#")!=0)
+                  vconf.push_back(temp);
+     }
+     f.close();
+     return true;
+}
+
 // --- main program ---//
 int main(int argc, char* argv[])
 {
@@ -319,6 +344,7 @@ int main(int argc, char* argv[])
     size_t seed=1234;
     vector<std::string> analyses;
     std::string out_file="diy.yoda";
+    std::string pfile="";
     // get command line arguments
     using namespace opts;
     Options ops(argc, argv);
@@ -331,6 +357,7 @@ int main(int argc, char* argv[])
     ops >> Option('m', "nmin",  nEventsPerBlock,  "Minimum number of events per block.");
     ops >> Option('o', "output",  out_file,  "Output filename.");
     ops >> Option('s', "seed",  seed,  "The Base seed.");
+    ops >> Option('p', "pfile",  pfile,  "Parameter config file for testing.");
     if (ops >> Present('h', "help", "Show help"))
     {
         std::cout << "Usage: " << argv[0] << " [OPTIONS]\n";
@@ -343,6 +370,15 @@ int main(int argc, char* argv[])
     size_t blocks = world.size() * threads;
 
     PointConfigs revised;
+    std::vector<std::string> physConfig;
+    bool f_ok = readConfig(pfile, physConfig);
+
+    for (auto s  : physConfig) 
+    {
+       std::cerr << s << "\n";
+    }
+    return 0;
+
 
     if( world.rank()==0 )
       {
