@@ -257,7 +257,49 @@ void print_block(Block* b,                             // local block
     }
 }
 
-// The actual work function. Event generation and analysis happen here.
+
+// A pilot event generation to filter out bad parameter points
+
+void pilot_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> physConfig)
+{
+  // This make rivet only report ERRORs
+  // TODO: can we have a global flag to steer verbosity of all moving parts?
+
+  // Minimise pythia's output
+  b->pythia.readString("Print:quiet = on");
+
+  // Configure pythia with a vector of strings
+  for (auto s  : physConfig) b->pythia.readString(s);
+
+  // Py8 random seed for this block read from point config
+  b->pythia.readString("Random:setSeed = on");
+  b->pythia.readString("Random:seed = " + std::to_string(b->state.seed));
+
+  // All configurations done, initialise Pythia
+  b->pythia.init();
+
+  int success = 0;
+  int nTrials = 0;
+  int nAbort = 100;
+  int iAbort = 0;
+  // The event loop
+  for (int iEvent = 0; iEvent < 100; ++iEvent) {
+     nTrials++;
+    if (!b->pythia.next()) {
+     fmt::print(stderr, "[{}] iAbort: {}\n", cp.gid(), iAbort);
+      if (++iAbort < nAbort) continue;
+      break;
+    }
+    success++;
+  }
+
+  fmt::print(stderr, "[{}] trials: {} success: {}\n", cp.gid(), nTrials, success);
+  // Push histos into block
+  //b->data = b->ah.getData();
+
+}
+
+
 void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> physConfig, std::vector<std::string> analyses)
 {
   // This make rivet only report ERRORs
@@ -283,10 +325,12 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std
   for (auto a : analyses) b->ah.addAnalysis(a);
 
   // The event loop
+  int nAbort = 10;
+  int iAbort = 0;
   for (int iEvent = 0; iEvent < b->state.num_events; ++iEvent) {
     if (!b->pythia.next()) {
-       continue; // Crucial not to break here. This slightly messes up the
-                 // total number of events of histograms but that's ok
+      if (++iAbort < nAbort) continue;
+      break;
     }
     HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
     b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
@@ -518,6 +562,12 @@ int main(int argc, char* argv[])
 
        // ----------- below is the processing for this application
        // threads active here
+       //
+       // Trial run
+       //master.foreach([world, physConfig](Block* b, const diy::Master::ProxyWithLink& cp)
+                        //{pilot_block(b, cp, world.rank(), physConfig); });
+       // TODO: get total fraction of event trials failing and discard physconfig if above certain threshold
+       
        master.foreach([world, physConfig, analyses](Block* b, const diy::Master::ProxyWithLink& cp)
                         {process_block(b, cp, world.rank(), physConfig, analyses); });
 
