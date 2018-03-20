@@ -83,6 +83,7 @@ struct GenericBlock
   int nEvents;
   Rivet::AnalysisHandler ah;
   HepMC::Pythia8ToHepMC ToHepMC;
+  std::vector<std::string> physConfig; // This is the pythia steering card, line by line
   
 private:
   GenericBlock() { }
