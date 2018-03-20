@@ -1,0 +1,10 @@
+Compilation:
+
+Laptop: bash myCMakeCommand.sh, make
+Cori,Theta, see https://bitbucket.org/jkowalkowski/scidac4-hep-on-hpc/wiki/Cori%20notes
+
+Example run on a single input file:
+    mpirun -n 7 ./pythia8-diy  -p tuningTest/scan/0000/runPythia.cmd -n 2000  -a MC_GENERIC -s 1 -o t4.yoda
+
+Example run on a whole directory of input files:
+    mpirun -n 7 ./pythia8-diy -i tuningTest/scan/ -p runPythia.cmd -n 20  -a MC_XS
