@@ -1,9 +1,14 @@
+# LEP collider setup at sqrt(s) = MZ
 Beams:idA = 11
 Beams:idB = -11
 Beams:eCM = 91.2
 WeakSingleBoson:ffbar2gmZ = on
-StringZ:aLund = 0.648293529541
-StringZ:bLund = 1.01945351549
-StringPT:enhancedFraction = 0.0107114983517
-StringPT:enhancedWidth = 1.87205919136
-StringPT:sigma = 0.352719032886
+# Allow only hadronic decay modes
+23:onMode = off
+23:onIfAny = 1 2 3 4 5
+# Some tuning parameters
+StringZ:aLund = 0.765626715761
+StringZ:bLund = 1.01458697394
+StringPT:enhancedFraction = 0.00956201570585
+StringPT:enhancedWidth = 2.29061125979
+StringPT:sigma = 0.289207459395
