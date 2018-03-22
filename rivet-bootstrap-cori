@@ -68,7 +68,7 @@ test -n "$DEBUG" && set -x
 export PATH=$INSTALL_PREFIX/bin:$PATH
 
 function wget_untar { wget --no-check-certificate $1 -O- | tar xz; }
-function conf { ./configure --prefix=$INSTALL_PREFIX "$@" --host=x86_64; }
+function conf { ./configure --prefix=$INSTALL_PREFIX "$@"; }
 function mmi { $MAKE "$@" && $MAKE install; }
 
 
@@ -124,7 +124,7 @@ if [[ "$INSTALL_RIVET" -eq "1" ]]; then
     cd $BUILD_PREFIX
     test -d Rivet-$RIVET_VERSION || wget_untar http://www.hepforge.org/archive/rivet/Rivet-$RIVET_VERSION.tar.gz
     cd Rivet-$RIVET_VERSION
-    conf $RIVET_CONFFLAGS \
+    conf $RIVET_CONFFLAGS --disable-pyext CXX=icc CC=icc CXXFLAGS="-xMIC-AVX512 -mkl" \
         --with-yoda=$YODAPATH \
         --with-hepmc=$HEPMCPATH \
         --with-fastjet=$FASTJETPATH 
