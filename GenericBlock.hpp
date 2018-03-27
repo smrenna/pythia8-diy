@@ -54,7 +54,6 @@ struct GenericBlock
   // get access to the reduce buffer and the block state that is filled by processing
   data_type const& reduceData() const { return data; }
   data_type& reduceBuffer() { return buffer; }
-
   // a = a + b    (might want to permit other combining function to be passed in here)
   static void reduce(data_type& a, data_type const& b)
   {
