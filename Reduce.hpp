@@ -13,6 +13,8 @@
 // have not yet done a local neighbor exchange yet.
 // this will become a template with parameter that is the Block type
 
+#include "config.hpp"
+
 template <typename B>
 void reduceData(B* b,
 	    const diy::ReduceProxy& rp,
@@ -53,6 +55,44 @@ void reduceData(B* b,
     }
   //b->reduceBuffer().swap(in_vals);
 }
+
+
+template <typename B>
+void bc_pointconfig(B* b,                                  // local block
+         const diy::ReduceProxy& rp,                // communication proxy
+         const diy::RegularBroadcastPartners& partners) // partners of the current block
+{
+    unsigned   round    = rp.round();               // current round number
+
+    // step 1: dequeue
+    for (int i=0; i < rp.in_link().size(); ++i)
+    {
+      int nbr_gid = rp.in_link().target(i).gid;
+      if (nbr_gid == rp.gid()) continue;
+
+      PointConfig  tmp;
+      rp.dequeue(nbr_gid, tmp);
+      b->state=tmp;
+    }
+
+    if (rp.out_link().size() == 0)        // final round; nothing needs to be sent
+       return;
+
+
+    // step 2: enqueue
+    for (int i = 0; i < rp.out_link().size(); ++i)    // redundant since size should equal to 1
+    {
+        // only send to root of group, but not self
+        if (rp.out_link().target(i).gid != rp.gid())
+        {
+	  rp.enqueue(rp.out_link().target(i), b->state);
+        }
+        //else
+            //fmt::print(stderr, "[{}:{}] Skipping sending to self\n", rp.gid(), round);
+    }
+}
+
+
 
 // diy::decompose needs to have a function defined to create a block
 // here, it is wrapped in an object to add blocks with an overloaded () operator
