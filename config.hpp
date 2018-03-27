@@ -12,6 +12,8 @@ struct PointConfig
   size_t num_events;
   size_t seed; // not correct type
   size_t physics_id; // not correct information
+  std::vector<std::string> conf;
+  std::string f_out;
 };
 
 typedef std::vector<PointConfig> PointConfigs;
