@@ -42,7 +42,7 @@ namespace {
 // This function calculates how many blocks we need to accumulate
 // the desired number of events given number of available ranks
 // for one physics configuration.
-PointConfigs mkSingleRunConfigs(size_t n_ranks, size_t n_events, size_t base_seed)
+PointConfigs mkSingleRunConfigs(size_t n_ranks, size_t n_events, size_t base_seed, std::vector<std::string> conf, std::string f_out)
 {
   PointConfigs revised;
 
@@ -59,11 +59,11 @@ PointConfigs mkSingleRunConfigs(size_t n_ranks, size_t n_events, size_t base_see
     size_t seed = i + base_seed;
     if (i==n_blocks-1)
     {
-      revised.push_back({ 1, static_cast<size_t>(n_events - i*n_perrank), seed, 1});
+      revised.push_back({ 1, static_cast<size_t>(n_events - i*n_perrank), seed, 1, conf, f_out});
     }
     else
     {
-      revised.push_back({ 1, static_cast<size_t>(n_perrank), seed, 1});
+      revised.push_back({ 1, static_cast<size_t>(n_perrank), seed, 1, conf, f_out});
     }
   }
 
