@@ -16,11 +16,14 @@
 #include <diy/assigner.hpp>
 #include <diy/mpi.hpp>
 #include <diy/serialization.hpp>
+#include <diy/partners/broadcast.hpp>
 
 #include "config.hpp"
 #include "GenericBlock.hpp"
 #include "Reduce.hpp"
+#include "Tools.hpp"
 #include "CalcConfig.hpp"
+#include "Serialisation.hpp"
 
 #include "YODA/ReaderYODA.h"
 #include "YODA/WriterYODA.h"
@@ -34,7 +37,6 @@
 #include "HepMC/IO_GenEvent.h"
 
 
-#include <glob.h>
 
 
 using namespace std;
@@ -60,187 +62,6 @@ using namespace std;
 typedef diy::DiscreteBounds Bounds;
 typedef diy::RegularGridLink RCLink;
 
-typedef std::vector<float> Weights;
-
-typedef std::shared_ptr<YODA::AnalysisObject> AO_ptr;
-typedef std::vector<AO_ptr> AnalysisObjects;
-
-// ----This is common to all introduced types - can it be automated? ------
-namespace diy {
-  // Serialisation for the PointConfig (seed and nEvent info mostly))
-  // TODO: Can we move this into a different file???
-  template <> struct Serialization<PointConfig>
-  {
-    static void save(diy::BinaryBuffer& bb, const PointConfig& m)
-    {
-       diy::save(bb, &m,sizeof(PointConfig));
-    }
-    static void load(diy::BinaryBuffer& bb, PointConfig& m)
-    {
-       diy::load(bb, &m, sizeof(PointConfig));
-    }
-  };
-
-  // This is JBKs tricking of the low level DIY serialisation to work with PointConfig
-  namespace mpi {
-    namespace detail {
-      template<> struct mpi_datatype<PointConfig>
-      {
-        static MPI_Datatype datatype() { return MPI_BYTE; }
-        static const void* address(PointConfig const& x) { return &x; }
-        static void* address(PointConfig& x) { return &x; }
-        static int count(PointConfig const&)
-        { return sizeof(PointConfig); }
-      };
-    }
-  }
-
-  // Serialisation for all kinds of YODA objects
-  // TODO: Can we move this into a different file???
-  template <> struct Serialization<AnalysisObjects>
-  {
-    typedef AnalysisObjects::value_type::element_type data_type;
-    typedef std::vector<data_type*> Ptrs;
-
-    static void save(diy::BinaryBuffer& bb, AnalysisObjects const& m)
-    {
-      std::ostringstream stream;
-      Ptrs out(m.size());
-      std::transform(m.cbegin(), m.cend(), out.begin(),
-		     [](AnalysisObjects::value_type const& x) { return x.get(); });
-      YODA::WriterYODA::write(stream, out);
-      std::string s = stream.str();
-
-      diy::save(bb, s.size());
-      diy::save(bb, s.c_str(), s.size());
-    }
-    static void load(diy::BinaryBuffer& bb, AnalysisObjects& m)
-    {
-      size_t sz;
-      diy::load(bb,sz); // sz is a return argument
-      std::string str;
-      str.resize(sz); // TODO use Marc's way
-
-      diy::load(bb, str.data(), sz);
-      std::istringstream stream(str);
-      auto tmp = YODA::ReaderYODA::read(stream);
-      AnalysisObjects in(tmp.begin(),tmp.end());
-      m.swap(in);
-    }
-  };
-
- }
-
-// What follows is for reduction of YODA analysis objects
-// TODO: Can we move this into a different file???
-
-// should be able to define
-// operator+(AnalysisObject_ptr, AnalysisObject_ptr)
-// here and the generic reduce should work.
-
-namespace YODA {
-template <typename T>
-bool addThisKind(AO_ptr& copy, AO_ptr const& other)
-{
-  auto const& bt = other.get();
-
-  if(typeid(*bt).hash_code() == typeid(T).hash_code())
-    {
-
-      try {auto& nh = dynamic_cast<T&>(*copy) ;} catch (const std::exception& e)
-      {
-        fmt::print(stderr, "\n\n exception in add h1d 1: {} {} {}\n", e.what(), copy->path(), copy->title());
-        copy->reset();
-        //return false;
-      }
-      try {auto const& bh = dynamic_cast<T&>(*other);} catch (const std::exception& e)
-      {
-        fmt::print(stderr, "\n\n exception in add h1d 2: {} {} {}\n", e.what(), other->path(), other->title());
-        //return false;
-      }
-      auto& nh = dynamic_cast<T&>(*copy);
-      auto const& bh = dynamic_cast<T&>(*other); // Cannot be const when calling scaleW
-      nh+=bh;
-      if (nh.hasAnnotation("OriginalScaledBy"))
-      {
-        double sc_n = std::stod(nh.annotation("OriginalScaledBy"));
-        double sc_b = std::stod(bh.annotation("OriginalScaledBy"));
-        nh.setAnnotation("OriginalScaledBy", sc_n+sc_b);
-      }
-      return true;
-    }
-  else
-    return false;
-}
-}
-
-template <typename T>
-bool addCounter(AO_ptr& copy, AO_ptr const& other)
-{
-  auto const& bt = other.get();
-  if(typeid(*bt).hash_code() == typeid(T).hash_code())
-    {
-      try {auto& nh = dynamic_cast<T&>(*copy) ;} catch (const std::exception& e)
-      {
-        fmt::print(stderr, "\n\n exception in add h1d 1: {} {} {}\n", e.what(), copy->path(), copy->title());
-        copy->reset();
-        //return false;
-      }
-      try {auto const& bh = dynamic_cast<T&>(*other);} catch (const std::exception& e)
-      {
-        fmt::print(stderr, "\n\n exception in add h1d 2: {} {} {}\n", e.what(), other->path(), other->title());
-        //return false;
-      }
-      auto& nh = dynamic_cast<T&>(*copy);
-      auto& bh = dynamic_cast<T&>(*other);
-      nh+=bh;
-      return true;
-    }
-  else
-    return false;
-}
-
-// Scatters do not have a += operator as the operation
-// is not well defined
-template <typename T>
-bool addScatters(AO_ptr& copy, AO_ptr const& other)
-{
-  auto const& bt = other.get();
-
-  if(typeid(*bt).hash_code() == typeid(T).hash_code())
-    {
-      auto& nh = dynamic_cast<T&>(*copy);
-      auto const& bh = dynamic_cast<T&>(*other);
-     //std::cerr << "Warning, no operator += defined for " << bt->type() << "\n";
-      return true;
-    }
-  else
-    return false;
-}
-
-// Definiton of a + operator to make general DIY reduction work with yoda objects
-namespace YODA {
-AO_ptr operator+(AO_ptr const& a, AO_ptr const& b)
-{
-  AO_ptr n(a->newclone());
-
-  if(!addThisKind<YODA::Histo1D>(n,b)   &&
-     !addThisKind<YODA::Histo2D>(n,b)   &&
-     !addThisKind<YODA::Profile1D>(n,b) &&
-     !addThisKind<YODA::Profile2D>(n,b) &&
-     !addCounter<YODA::Counter>(n,b)    &&
-     !addScatters<YODA::Scatter1D>(n,b) &&
-     !addScatters<YODA::Scatter2D>(n,b) &&
-     !addScatters<YODA::Scatter3D>(n,b))
-      {
-	std::cerr << "in op+ - but no match!!\n";
-	throw std::runtime_error("no YODA type match in op+");
-      }
-
-  return n;
-}
-}
-
 typedef GenericBlock<Bounds, PointConfig, AnalysisObjects> Block;
 typedef ConfigBlockAdder<Bounds, RCLink, Block, PointConfigs> AddBlock;
 
@@ -249,14 +70,16 @@ void print_block(Block* b,                             // local block
                  const diy::Master::ProxyWithLink& cp, // communication proxy
                  bool verbose)                         // user-defined additional arguments
 {
-  if (verbose && cp.gid() == 0)
+  //if (verbose && cp.gid() == 0)
     {
+       for (auto s : b->state.conf) {
+         fmt::print(stderr, "[{}]: {} ", cp.gid(), s);
+       }
       //      for (size_t i = 0; i < b->data.size(); ++i)
       //fmt::print(stderr, "({},{}) ", b->data[i], b->buffer[i]);
-      //fmt::print(stderr, "\n");
+      fmt::print(stderr, "\n");
     }
 }
-
 
 // A pilot event generation to filter out bad parameter points
 
@@ -300,14 +123,15 @@ void pilot_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::
 }
 
 
-void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> physConfig, std::vector<std::string> analyses)
+void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> physConfig, std::vector<std::string> analyses, bool verbose)
 {
   // This make rivet only report ERRORs
   // TODO: can we have a global flag to steer verbosity of all moving parts?
   Rivet::Log::setLevel("Rivet", Rivet::Log::ERROR);
 
   // Minimise pythia's output
-  b->pythia.readString("Print:quiet = on");
+  if (verbose) b->pythia.readString("Print:quiet = off");
+  else b->pythia.readString("Print:quiet = on");
   //b->pythia.readString("Init:showChangedSettings= on");
 
   // Configure pythia with a vector of strings
@@ -372,7 +196,7 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std
 }
 
 
-void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, std::string out_file, int rank)
+void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int rank)//, std::string out_file, int rank)
 {
   if (rank==0 && cp.gid()==0) {
     for (auto ao : b->buffer) {
@@ -389,46 +213,20 @@ void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, std::string out_
         }
       }
     }
-    YODA::WriterYODA::write(out_file, b->buffer);
+    YODA::WriterYODA::write(b->state.f_out, b->buffer);
   }
 }
 
-// Get all files from subdirectories following a certain pattern
-// https://stackoverflow.com/questions/8401777/simple-glob-in-c-on-unix-system
-inline std::vector<std::string> glob(const std::string& pat)
+
+void set_pc(Block* b,                             // local block
+                 const diy::Master::ProxyWithLink& cp, // communication proxy
+                 PointConfig pc)                         // user-defined additional arguments
 {
-  using namespace std;
-  glob_t glob_result;
-  glob(pat.c_str(),GLOB_TILDE,NULL,&glob_result);
-  vector<string> ret;
-  for(unsigned int i=0;i<glob_result.gl_pathc;++i){
-      ret.push_back(string(glob_result.gl_pathv[i]));
-  }
-  globfree(&glob_result);
-  return ret;
-}
-
-// Read a config file, ignore empty lines and # commented lines
-bool readConfig(std::string fname, std::vector<std::string> & vconf)
-{
-  std::ifstream f(fname.c_str());
-
-  // Check if object is valid
-  if(!f)
-  {
-    std::cerr << "Error opening file '"<<fname<<"'\n";
-    return false;
-  }
-
-  std::string temp;
-  // Read the next line from File untill it reaches the end.
-  while (std::getline(f, temp))
-  {
-    // Line contains string of length > 0 then save it in vector
-    if (temp.size() > 0 && temp.find("#")!=0) vconf.push_back(temp);
-  }
-  f.close();
-  return true;
+  //if (cp.gid() == 0)
+    //{
+      //fmt::print(stderr, "Set PC\n");
+       b->state = pc;
+    //}
 }
 
 // --- main program ---//
@@ -463,135 +261,109 @@ int main(int argc, char* argv[])
         std::cout << ops;
         return 1;
     }
-
-    int mem_blocks  = -1;  // all blocks in memory, if value here then that is how many are in memory
-
-    size_t blocks = world.size() * threads;
-
+    
     PointConfigs revised;
     std::vector<std::string> physConfig;
     std::vector<std::vector<std::string> > physConfigs;
-    bool f_ok = readConfig(pfile, physConfig);
     std::vector<std::string> out_files;
-
-    // Programm logic: check whether a single parameter file has been given or
-    // a directory.
-    if (!f_ok)
-    {
-       // Use glob to look for files in directory
-       for (auto f : glob(indir + "/*/" + pfile))
-       {
-          physConfig.clear();
-          bool this_ok = readConfig(f, physConfig);
-          if (this_ok) {
-             physConfigs.push_back(physConfig);
-             out_files.push_back(f+".yoda");
+    bool f_ok;
+    //if( world.rank()==0 ) {
+       // Programm logic: check whether a single parameter file has been given or
+       // a directory.
+       f_ok = readConfig(pfile, physConfig);
+       if (!f_ok) {
+          // Use glob to look for files in directory
+          for (auto f : glob(indir + "/*/" + pfile)) {
+             physConfig.clear();
+             bool this_ok = readConfig(f, physConfig);
+             if (this_ok) {
+                physConfigs.push_back(physConfig);
+                out_files.push_back(f+".yoda");
+             }
           }
+       } 
+       else {
+          physConfigs.push_back(physConfig);
+          out_files.push_back(out_file);
        }
+       revised = mkSingleRunConfigs(world.size()*threads, nEvents, seed,physConfigs[0], out_files[0]);
+    //}
+
+    int mem_blocks  = -1;  // all blocks in memory, if value here then that is how many are in memory
+    int dim(1);
+    size_t blocks = world.size() * threads;
+    auto interval = blocks/world.size();
+    auto my_ndx = interval*(world.rank());
+    
+    auto my_start = revised.cbegin()+my_ndx;
+    auto my_end = (world.rank()==world.size()-1) ? revised.end() : my_start+interval;
+
+    // ----- starting here is a lot of standard boilerplate code for this kind of
+    //       application.
+
+    // diy initialization
+    diy::FileStorage storage("./DIY.XXXXXX"); // used for blocks moved out of core
+    diy::Master master(world, threads, mem_blocks, &Block::create, &Block::destroy,
+                     &storage, &Block::save, &Block::load);
+
+    //// an object for adding new blocks to master
+    AddBlock create(master, my_start, my_end);
+
+    //// changed to discrete bounds and give range of revised
+    //// set some global data bounds
+    //// each block is given the configuration slot it processes
+    Bounds domain;
+    for (int i = 0; i < dim; ++i) {
+        domain.min[i] = 0;
+        domain.max[i] = revised.size()-1;
     }
-    else
-    {
-       physConfigs.push_back(physConfig);
-       out_files.push_back(out_file);
-    }
 
-    // This gets all the physics configurations --- use as entry for loop
-    for (std::size_t ipc = 0; ipc < physConfigs.size(); ++ipc)
-    {
-       physConfig = physConfigs[ipc];// TODO: is it better to broadcast this?
+    //// choice of contiguous or round robin assigner
+    diy::ContiguousAssigner   assigner(world.size(), blocks);
 
-       // MPI logic: function call to mkSingleRunConfigs only on rank 0
-       if( world.rank()==0 )
-       {
-         revised = mkSingleRunConfigs(world.size()*threads, nEvents, seed);
-         //physConfig = physConfigs[ipc];
-       }
-       // MPI logic: broadcast result of mkSingleRunConfigs to all participants
-       diy::mpi::broadcast(world, revised, 0);
+    // decompose the domain into blocks
+    // This is a DIY regular way to assign neighbors. You can do this manually.
+    diy::RegularDecomposer<Bounds> decomposer(dim, domain, blocks);
 
-       // HS: failed attempts to broadcast physConfigs
-       //diy::MemoryBuffer bb;
-       ////save(bb, revised);
-       //diy::mpi::broadcast(world, bb, 0);
-       ////load(bb, revised);
-       //diy::mpi::broadcast(world, physConfig, 0);
 
-       // HS: what is this?
-       // probably do not need this if the domain is used (Bounds)
-       // which of the blocks are mine?
-       auto interval = blocks/world.size();
-       auto my_ndx = interval*(world.rank());
-       auto my_start = revised.cbegin()+my_ndx;
-       auto my_end = (world.rank()==world.size()-1) ? revised.end() : my_start+interval;
+    fmt::print(stderr, "[{}] -- blocks {} wsize {} dim {} revsiz {}  \n", world.rank(), blocks, world.size(), dim, revised.size());
 
-       // ----- starting here is a lot of standard boilerplate code for this kind of
-       //       application.
+    decomposer.decompose(world.rank(), assigner, create);
+    int k = 2;       // the radix of the k-ary reduction tree
 
-       // diy initialization
-       diy::FileStorage storage("./DIY.XXXXXX"); // used for blocks moved out of core
-       diy::Master master(world, // master is the top-level diy object
-                        threads,
-                        mem_blocks,
-                        &Block::create, &Block::destroy,
-                        &storage,
-                        &Block::save, &Block::load);
+    
+    diy::RegularBroadcastPartners comm(decomposer, k, true);
+    
+    master.foreach([revised](Block* b, const diy::Master::ProxyWithLink& cp)
+                     {set_pc(b, cp, revised[0]); });
+    diy::reduce(master, assigner, comm, &bc_pointconfig<Block>);
 
-       // an object for adding new blocks to master
-       AddBlock create(master, my_start, my_end);
+    master.foreach([world](Block* b, const diy::Master::ProxyWithLink& cp)
+                     {print_block(b, cp, world.rank()); });
 
-       //  -------
+    master.foreach([world, physConfig, analyses, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
+                     {process_block(b, cp, world.rank(), physConfig, analyses, verbose); });
 
-       int dim(1); // TODO get rid of this
-       // changed to discrete bounds and give range of revised
-       // set some global data bounds
-       // each block is given the configuration slot it processes
-       Bounds domain;
-       for (int i = 0; i < dim; ++i)
-         {
-           domain.min[i] = 0;
-           domain.max[i] = revised.size()-1;
-         }
 
-       // choice of contiguous or round robin assigner
-       diy::ContiguousAssigner   assigner(world.size(), blocks);
+    diy::RegularMergePartners  partners(decomposer,  // domain decomposition
+                                        k,           // radix of k-ary reduction
+                                        true); // contiguous = true: distance doubling
 
-       // decompose the domain into blocks
-       // This is a DIY regular way to assign neighbors. You can do this manually.
-       diy::RegularDecomposer<Bounds> decomposer(dim, domain, blocks);
-       decomposer.decompose(world.rank(), assigner, create);
+    diy::reduce(master,              // Master object
+                assigner,            // Assigner object
+                partners,            // RegularMergePartners object
+                &reduceData<Block>);
 
-       // ----------- below is the processing for this application
-       // threads active here
-       //
-       // Trial run
-       //master.foreach([world, physConfig](Block* b, const diy::Master::ProxyWithLink& cp)
-                        //{pilot_block(b, cp, world.rank(), physConfig); });
-       // TODO: get total fraction of event trials failing and discard physconfig if above certain threshold
+    ////This is where the write out happens --- the output file name is part of the blocks config
+    master.foreach([world](Block* b, const diy::Master::ProxyWithLink& cp)
+                   { write_yoda(b, cp, world.rank()); });
        
-       master.foreach([world, physConfig, analyses](Block* b, const diy::Master::ProxyWithLink& cp)
-                        {process_block(b, cp, world.rank(), physConfig, analyses); });
+    //// Trial run
+    ////master.foreach([world, physConfig](Block* b, const diy::Master::ProxyWithLink& cp)
+    ///{pilot_block(b, cp, world.rank(), physConfig); });
+       //master.foreach([world,out_files, ipc](Block* b, const diy::Master::ProxyWithLink& cp)
+                      //{ write_yoda(b, cp, out_files[ipc], world.rank()); });
 
-        //this is MPI
-        //merge-based reduction: create the partners that determine how groups are formed
-        //in each round and then execute the reduction
-       int k = 2;       // the radix of the k-ary reduction tree
-       // partners for merge over regular block grid
-       diy::RegularMergePartners  partners(decomposer,  // domain decomposition
-                                           k,           // radix of k-ary reduction
-                                           true); // contiguous = true: distance doubling
-       // contiguous = false: distance halving
-       // reduction
-       // this assumes that all blocks are participating in the reduction
-       diy::reduce(master,              // Master object
-                   assigner,            // Assigner object
-                   partners,            // RegularMergePartners object
-                   &reduceData<Block>);
-
-        //This is where the write out happens
-       master.foreach([world,out_files, ipc](Block* b, const diy::Master::ProxyWithLink& cp)
-                      { write_yoda(b, cp, out_files[ipc], world.rank()); });
-
-    }
 
     return 0;
 }
