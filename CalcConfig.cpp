@@ -42,7 +42,7 @@ namespace {
 // This function calculates how many blocks we need to accumulate
 // the desired number of events given number of available ranks
 // for one physics configuration.
-PointConfigs mkSingleRunConfigs(size_t n_ranks, size_t n_events, size_t base_seed, std::vector<std::string> conf, std::string f_out)
+PointConfigs mkSingleRunConfigs(size_t n_ranks, size_t n_events, size_t base_seed, std::vector<std::string> conf, std::vector<std::string> analyses, std::string f_out)
 {
   PointConfigs revised;
 
@@ -56,17 +56,27 @@ PointConfigs mkSingleRunConfigs(size_t n_ranks, size_t n_events, size_t base_see
   // just so the total number of events is exactly what the user requests.
   for (size_t i=0; i<n_blocks;++i)
   {
-    size_t seed = i + base_seed;
+    size_t seed = base_seed;
     if (i==n_blocks-1)
     {
-      revised.push_back({ 1, static_cast<size_t>(n_events - i*n_perrank), seed, 1, conf, f_out});
+      revised.push_back({ 1, static_cast<size_t>(n_events - i*n_perrank), seed, 1, conf, analyses, f_out});
     }
     else
     {
-      revised.push_back({ 1, static_cast<size_t>(n_perrank), seed, 1, conf, f_out});
+      revised.push_back({ 1, static_cast<size_t>(n_perrank), seed, 1, conf, analyses, f_out});
     }
   }
 
   // Set config
   return std::move(revised);
+}
+
+PointConfig mkRunConfig(size_t n_ranks, size_t n_events, size_t base_seed, std::vector<std::string> conf, std::vector<std::string> analyses, std::string f_out)
+{
+  PointConfig pc;
+
+  auto n_perrank = ceil(n_events/n_ranks);
+
+  // Set config
+  return {1, static_cast<size_t>(n_perrank), base_seed, 1, conf, analyses, f_out};
 }
