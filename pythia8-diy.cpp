@@ -17,6 +17,9 @@
 #include <diy/mpi.hpp>
 #include <diy/serialization.hpp>
 #include <diy/partners/broadcast.hpp>
+#include <diy/reduce-operations.hpp>
+
+
 
 #include "config.hpp"
 #include "GenericBlock.hpp"
@@ -45,44 +48,30 @@ using namespace Pythia8;
 
 using namespace std;
 
-/*
-  Note: This is not done.  The reduction is across all configurations.
-  It really needs to be only over same physics / model space parameters.
-  Discussed doing this by constructing a custom neighbor relationship
-  that only include like physics and model space parameters.
-
-  Templates that handle standard boilderplate code are needed for:
-  1) blocks
-  2) management of master, assigner, and decomposer
-  3) reduction operation
-  4) perhaps defining custom data types to be sent around (see PointConfig)
-  5) helpers for the "foreach" processing
- */
 
 typedef diy::DiscreteBounds Bounds;
 typedef diy::RegularGridLink RCLink;
 
 typedef GenericBlock<Bounds, PointConfig, AnalysisObjects> Block;
-typedef ConfigBlockAdder<Bounds, RCLink, Block, PointConfigs> AddBlock;
+typedef ConfigBlockAdder2<Bounds, RCLink, Block, PointConfig> AddBlock2;
 
 
 void print_block(Block* b,                             // local block
                  const diy::Master::ProxyWithLink& cp, // communication proxy
                  bool verbose)                         // user-defined additional arguments
 {
-  //if (verbose && cp.gid() == 0)
-    {
-       for (auto s : b->state.conf) {
-         fmt::print(stderr, "[{}]: {} ", cp.gid(), s);
-       }
-      //      for (size_t i = 0; i < b->data.size(); ++i)
-      //fmt::print(stderr, "({},{}) ", b->data[i], b->buffer[i]);
-      fmt::print(stderr, "\n");
-    }
+   for (auto s : b->state.conf) {
+      fmt::print(stderr, "[{}]: {} ", cp.gid(), s);
+   }
+   fmt::print(stderr, " {} ", b->state.seed);
+   fmt::print(stderr, "\n");
+   for (auto s : b->state.analyses) {
+      fmt::print(stderr, "[{}]: {} ", cp.gid(), s);
+   }
+   fmt::print(stderr, "\n");
 }
 
 // A pilot event generation to filter out bad parameter points
-
 void pilot_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> physConfig)
 {
   // This make rivet only report ERRORs
@@ -123,34 +112,35 @@ void pilot_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::
 }
 
 
-void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> physConfig, std::vector<std::string> analyses, bool verbose)
+//void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> physConfig, std::vector<std::string> analyses, bool verbose)
+void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank,  bool verbose)
 {
   // This make rivet only report ERRORs
   // TODO: can we have a global flag to steer verbosity of all moving parts?
-  Rivet::Log::setLevel("Rivet", Rivet::Log::ERROR);
+  if (!verbose) Rivet::Log::setLevel("Rivet", Rivet::Log::ERROR);
 
   // Minimise pythia's output
   if (verbose) b->pythia.readString("Print:quiet = off");
   else b->pythia.readString("Print:quiet = on");
-  //b->pythia.readString("Init:showChangedSettings= on");
 
   // Configure pythia with a vector of strings
-  for (auto s  : physConfig) b->pythia.readString(s);
+  for (auto s  : b->state.conf) b->pythia.readString(s);
 
   // Py8 random seed for this block read from point config
   b->pythia.readString("Random:setSeed = on");
-  b->pythia.readString("Random:seed = " + std::to_string(b->state.seed));
+  b->pythia.readString("Random:seed = " + std::to_string(b->state.seed+cp.gid()));
 
   // All configurations done, initialise Pythia
   b->pythia.init();
 
   // Add all anlyses to rivet
   // TODO: we may want to feed the "ignore beams" switch as well
-  for (auto a : analyses) b->ah.addAnalysis(a);
+  for (auto a : b->state.analyses) b->ah.addAnalysis(a);
 
   // The event loop
-  int nAbort = 10;
+  int nAbort = 5;
   int iAbort = 0;
+  if (verbose) fmt::print(stderr, "[{}] generating {} events\n", cp.gid(),  b->state.num_events);
   for (int iEvent = 0; iEvent < b->state.num_events; ++iEvent) {
     if (!b->pythia.next()) {
       if (++iAbort < nAbort) continue;
@@ -161,9 +151,10 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std
 
     try {b->ah.analyze( *hepmcevt ) ;} catch (const std::exception& e)
     {
-   //   fmt::print(stderr, "[{}] exception in analyze: {}\n", cp.gid(), e.what());
+      if (verbose) fmt::print(stderr, "[{}] exception in analyze: {}\n", cp.gid(), e.what());
     }
     delete hepmcevt;
+    if (verbose && iEvent%100 == 0) fmt::print(stderr, "[{}]  {}/{} \n", cp.gid(),  iEvent, b->state.num_events);;
   }
 
   // Event loop is done, set xsection correctly and normalise histos
@@ -196,7 +187,7 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std
 }
 
 
-void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int rank)//, std::string out_file, int rank)
+void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int rank, bool verbose)
 {
   if (rank==0 && cp.gid()==0) {
     for (auto ao : b->buffer) {
@@ -213,6 +204,7 @@ void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int rank)//, std
         }
       }
     }
+    if (verbose) fmt::print(stderr, "[{}] -- writing to file {}  \n", cp.gid(), b->state.f_out);
     YODA::WriterYODA::write(b->state.f_out, b->buffer);
   }
 }
@@ -222,11 +214,7 @@ void set_pc(Block* b,                             // local block
                  const diy::Master::ProxyWithLink& cp, // communication proxy
                  PointConfig pc)                         // user-defined additional arguments
 {
-  //if (cp.gid() == 0)
-    //{
-      //fmt::print(stderr, "Set PC\n");
-       b->state = pc;
-    //}
+  if (cp.gid() == 0) b->state = pc;
 }
 
 // --- main program ---//
@@ -235,6 +223,7 @@ int main(int argc, char* argv[])
     diy::mpi::environment env(argc, argv);
     diy::mpi::communicator world;
 
+    size_t nBlocks = 0;
     int threads = 1;
     int nEvents=1000;
     size_t seed=1234;
@@ -250,6 +239,7 @@ int main(int argc, char* argv[])
                                                            "verbose output");
     ops >> Option('t', "thread",    threads,   "Number of threads");
     ops >> Option('n', "nevents",   nEvents,   "Number of events to generate in total");
+    ops >> Option('b', "nblocks",   nBlocks,   "Number of blocks");
     ops >> Option('a', "analysis",  analyses,  "Rivet analyses --- can be given multiple times");
     ops >> Option('o', "output",    out_file,  "Output filename.");
     ops >> Option('s', "seed",      seed,      "The Base seed --- this is incremented for each block.");
@@ -262,20 +252,19 @@ int main(int argc, char* argv[])
         return 1;
     }
     
-    PointConfigs revised;
     std::vector<std::string> physConfig;
     std::vector<std::vector<std::string> > physConfigs;
     std::vector<std::string> out_files;
     bool f_ok;
-    //if( world.rank()==0 ) {
+    //if( world.rank()==0 ) { # TODO figure out how to make this work
        // Programm logic: check whether a single parameter file has been given or
        // a directory.
-       f_ok = readConfig(pfile, physConfig);
+       f_ok = readConfig(pfile, physConfig, verbose);
        if (!f_ok) {
           // Use glob to look for files in directory
           for (auto f : glob(indir + "/*/" + pfile)) {
              physConfig.clear();
-             bool this_ok = readConfig(f, physConfig);
+             bool this_ok = readConfig(f, physConfig, verbose);
              if (this_ok) {
                 physConfigs.push_back(physConfig);
                 out_files.push_back(f+".yoda");
@@ -285,18 +274,18 @@ int main(int argc, char* argv[])
        else {
           physConfigs.push_back(physConfig);
           out_files.push_back(out_file);
+          std::cerr << out_files.back() << " ##### \n";
        }
-       revised = mkSingleRunConfigs(world.size()*threads, nEvents, seed,physConfigs[0], out_files[0]);
     //}
+
+
 
     int mem_blocks  = -1;  // all blocks in memory, if value here then that is how many are in memory
     int dim(1);
-    size_t blocks = world.size() * threads;
-    auto interval = blocks/world.size();
-    auto my_ndx = interval*(world.rank());
     
-    auto my_start = revised.cbegin()+my_ndx;
-    auto my_end = (world.rank()==world.size()-1) ? revised.end() : my_start+interval;
+    size_t blocks;
+    if (nBlocks==0) blocks= world.size() * threads;
+    else blocks=nBlocks;
 
     // ----- starting here is a lot of standard boilerplate code for this kind of
     //       application.
@@ -305,64 +294,66 @@ int main(int argc, char* argv[])
     diy::FileStorage storage("./DIY.XXXXXX"); // used for blocks moved out of core
     diy::Master master(world, threads, mem_blocks, &Block::create, &Block::destroy,
                      &storage, &Block::save, &Block::load);
-
-    //// an object for adding new blocks to master
-    AddBlock create(master, my_start, my_end);
-
-    //// changed to discrete bounds and give range of revised
-    //// set some global data bounds
-    //// each block is given the configuration slot it processes
     Bounds domain;
     for (int i = 0; i < dim; ++i) {
-        domain.min[i] = 0;
-        domain.max[i] = revised.size()-1;
+      domain.min[i] = 0;
+      domain.max[i] = blocks-1;
     }
 
-    //// choice of contiguous or round robin assigner
+    ////// choice of contiguous or round robin assigner
     diy::ContiguousAssigner   assigner(world.size(), blocks);
-
-    // decompose the domain into blocks
-    // This is a DIY regular way to assign neighbors. You can do this manually.
+    //// decompose the domain into blocks
+    //// This is a DIY regular way to assign neighbors. You can do this manually.
     diy::RegularDecomposer<Bounds> decomposer(dim, domain, blocks);
 
-
-    fmt::print(stderr, "[{}] -- blocks {} wsize {} dim {} revsiz {}  \n", world.rank(), blocks, world.size(), dim, revised.size());
-
-    decomposer.decompose(world.rank(), assigner, create);
     int k = 2;       // the radix of the k-ary reduction tree
-
-    
     diy::RegularBroadcastPartners comm(decomposer, k, true);
-    
-    master.foreach([revised](Block* b, const diy::Master::ProxyWithLink& cp)
-                     {set_pc(b, cp, revised[0]); });
-    diy::reduce(master, assigner, comm, &bc_pointconfig<Block>);
-
-    master.foreach([world](Block* b, const diy::Master::ProxyWithLink& cp)
-                     {print_block(b, cp, world.rank()); });
-
-    master.foreach([world, physConfig, analyses, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
-                     {process_block(b, cp, world.rank(), physConfig, analyses, verbose); });
-
 
     diy::RegularMergePartners  partners(decomposer,  // domain decomposition
                                         k,           // radix of k-ary reduction
                                         true); // contiguous = true: distance doubling
 
-    diy::reduce(master,              // Master object
-                assigner,            // Assigner object
-                partners,            // RegularMergePartners object
-                &reduceData<Block>);
 
-    ////This is where the write out happens --- the output file name is part of the blocks config
-    master.foreach([world](Block* b, const diy::Master::ProxyWithLink& cp)
-                   { write_yoda(b, cp, world.rank()); });
-       
-    //// Trial run
-    ////master.foreach([world, physConfig](Block* b, const diy::Master::ProxyWithLink& cp)
-    ///{pilot_block(b, cp, world.rank(), physConfig); });
-       //master.foreach([world,out_files, ipc](Block* b, const diy::Master::ProxyWithLink& cp)
-                      //{ write_yoda(b, cp, out_files[ipc], world.rank()); });
+    PointConfig pc;
+    for (size_t ipc=0;ipc<physConfigs.size();++ipc) {
+       if (world.rank()==0) {
+          pc = mkRunConfig(blocks, nEvents, seed, physConfigs[ipc], analyses, out_files[ipc]);
+       }
+
+       AddBlock2 create(master, pc);
+       // This probably only works if the number of blocks is the same for each pc
+       if (ipc==0) decomposer.decompose(world.rank(), assigner, create); // Note: only decompose once!
+
+       // We need to tell the first block about the new configuration --- TODO: more elegant way to access the first block?
+       master.foreach([world, pc](Block* b, const diy::Master::ProxyWithLink& cp)
+                        {set_pc(b, cp, pc); });
+
+       // Broadcast the runconfig to the other blocks
+       diy::reduce(master, assigner, comm, &bc_pointconfig<Block>);
+
+       if (verbose) master.foreach([world](Block* b, const diy::Master::ProxyWithLink& cp)
+                        {print_block(b, cp, world.rank()); });
+
+       master.foreach([world, physConfig, analyses, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
+                        {process_block(b, cp, world.rank(), verbose); });
+
+
+
+       diy::reduce(master,              // Master object
+                   assigner,            // Assigner object
+                   partners,            // RegularMergePartners object
+                   &reduceData<Block>);
+
+       //////This is where the write out happens --- the output file name is part of the blocks config
+       master.foreach([world, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
+                      { write_yoda(b, cp, world.rank(), verbose); });
+
+       //// Trial run
+       ////master.foreach([world, physConfig](Block* b, const diy::Master::ProxyWithLink& cp)
+       ///{pilot_block(b, cp, world.rank(), physConfig); });
+          //master.foreach([world,out_files, ipc](Block* b, const diy::Master::ProxyWithLink& cp)
+                         //{ write_yoda(b, cp, out_files[ipc], world.rank()); });
+   }
 
 
     return 0;
