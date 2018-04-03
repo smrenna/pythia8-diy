@@ -22,6 +22,8 @@ namespace diy {
        diy::save(bb, m.physics_id);
        diy::save(bb, m.conf.size());
        for (auto s : m.conf) diy::save(bb, s);
+       diy::save(bb, m.analyses.size());
+       for (auto s : m.analyses) diy::save(bb, s);
        diy::save(bb, m.f_out);
     }
     static void load(diy::BinaryBuffer& bb, PointConfig& m)
@@ -42,6 +44,13 @@ namespace diy {
           // Elementwise loading of string from bb using diy's native load for std::string
           diy::load(bb, temp);
           m.conf[i] = temp;
+       }
+       diy::load(bb, size);
+       m.analyses.resize(size);
+       for (size_t i=0;i<size;++i) { // Iteration over now known number of elements
+          // Elementwise loading of string from bb using diy's native load for std::string
+          diy::load(bb, temp);
+          m.analyses[i] = temp;
        }
        diy::load(bb, temp);
        m.f_out = temp;
