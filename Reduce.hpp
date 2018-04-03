@@ -117,9 +117,10 @@ struct ConfigBlockAdder
 		   const link_type& link)     // neighborhood
   //const
   {
+     std::cerr << "configs.size : " << configs.size() << "\n";
     if(pos>=configs.size()) throw std::runtime_error("too many blocks generated");
     block_type* b = new block_type(core, configs[pos++]);
-    //fmt::print(stderr,"AddBlock called {} {} \n",pos,(void*)b);
+    fmt::print(stderr,"AddBlock called {} {} \n",pos,(void*)b);
     link_type* l = new link_type(link);
     diy::Master& m = const_cast<diy::Master&>(master);
     
@@ -132,4 +133,31 @@ struct ConfigBlockAdder
   size_t pos;
 };
 
+template <typename Bnds, typename Link, typename B, typename Cs>
+struct ConfigBlockAdder2
+{
+  typedef Link link_type;
+  typedef Bnds bounds_type;
+  typedef Cs configs_type;
+  typedef B block_type;
+
+  ConfigBlockAdder2(diy::Master& master_, configs_type conf_):
+    master(master_), conf(conf_) { }
+
+  // this is the function that is needed for diy::decompose
+  void  operator()(int gid,                // block global id
+		   const bounds_type& core,     // block bounds without any ghost added
+		   const bounds_type& bounds,   // block bounds including any ghost region added
+		   const bounds_type& domain,   // global data bounds
+		   const link_type& link)     // neighborhood
+  {
+       block_type* b = new block_type(core, conf);
+       link_type* l = new link_type(link);
+       diy::Master& m = const_cast<diy::Master&>(master);
+       m.add(gid, b, l); // add block to the master (mandatory)
+  }
+
+  diy::Master&  master;
+  configs_type conf;
+};
 #endif
