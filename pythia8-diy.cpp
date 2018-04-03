@@ -274,7 +274,6 @@ int main(int argc, char* argv[])
        else {
           physConfigs.push_back(physConfig);
           out_files.push_back(out_file);
-          std::cerr << out_files.back() << " ##### \n";
        }
     //}
 
