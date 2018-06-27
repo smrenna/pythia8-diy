@@ -97,52 +97,16 @@ void bc_pointconfig(B* b,                                  // local block
 // diy::decompose needs to have a function defined to create a block
 // here, it is wrapped in an object to add blocks with an overloaded () operator
 // it could have also been written as a standalone function
-template <typename Bnds, typename Link, typename B, typename Cs>
+
+template <typename Bnds, typename Link, typename B>
 struct ConfigBlockAdder
 {
   typedef Link link_type;
   typedef Bnds bounds_type;
-  typedef Cs configs_type;
-  typedef B block_type;
-  typedef typename configs_type::const_iterator Iter;
-  
-  ConfigBlockAdder(diy::Master& master_, Iter& st, Iter& en):
-    master(master_),configs(st,en), pos(0) { }
-
-  // this is the function that is needed for diy::decompose
-  void  operator()(int gid,                // block global id
-		   const bounds_type& core,     // block bounds without any ghost added
-		   const bounds_type& bounds,   // block bounds including any ghost region added
-		   const bounds_type& domain,   // global data bounds
-		   const link_type& link)     // neighborhood
-  //const
-  {
-     std::cerr << "configs.size : " << configs.size() << "\n";
-    if(pos>=configs.size()) throw std::runtime_error("too many blocks generated");
-    block_type* b = new block_type(core, configs[pos++]);
-    fmt::print(stderr,"AddBlock called {} {} \n",pos,(void*)b);
-    link_type* l = new link_type(link);
-    diy::Master& m = const_cast<diy::Master&>(master);
-    
-    m.add(gid, b, l); // add block to the master (mandatory)
-    // b->generate_data(num_points); // initialize block data (typical)
-  }
-  
-  diy::Master&  master;
-  configs_type configs;
-  size_t pos;
-};
-
-template <typename Bnds, typename Link, typename B, typename Cs>
-struct ConfigBlockAdder2
-{
-  typedef Link link_type;
-  typedef Bnds bounds_type;
-  typedef Cs configs_type;
   typedef B block_type;
 
-  ConfigBlockAdder2(diy::Master& master_, configs_type conf_):
-    master(master_), conf(conf_) { }
+  ConfigBlockAdder(diy::Master& master_):
+    master(master_) { }
 
   // this is the function that is needed for diy::decompose
   void  operator()(int gid,                // block global id
@@ -151,13 +115,12 @@ struct ConfigBlockAdder2
 		   const bounds_type& domain,   // global data bounds
 		   const link_type& link)     // neighborhood
   {
-       block_type* b = new block_type(core, conf);
+       block_type* b = new block_type(core);
        link_type* l = new link_type(link);
        diy::Master& m = const_cast<diy::Master&>(master);
        m.add(gid, b, l); // add block to the master (mandatory)
   }
 
   diy::Master&  master;
-  configs_type conf;
 };
 #endif
