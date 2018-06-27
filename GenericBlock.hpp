@@ -25,7 +25,7 @@ struct GenericBlock
   typedef D data_type;
   typedef GenericBlock<B,S,D> block_type;
 
-  GenericBlock(bounds_type const& b, state_type const& pc):bounds(b),state(pc) { }
+  GenericBlock(bounds_type const& b):bounds(b),ah(NULL) { }
 
   // ---------------------------------------
   // standard functions for block processing
@@ -80,7 +80,7 @@ struct GenericBlock
   // Shorthand for the event record in pythia.
   Event& event = pythia.event;
   int nEvents;
-  Rivet::AnalysisHandler ah;
+  Rivet::AnalysisHandler *ah;
   HepMC::Pythia8ToHepMC ToHepMC;
   std::vector<std::string> physConfig; // This is the pythia steering card, line by line
   
