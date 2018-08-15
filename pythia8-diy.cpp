@@ -121,7 +121,7 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank,  bo
       if (verbose) fmt::print(stderr, "[{}] exception in analyze: {}\n", cp.gid(), e.what());
     }
     delete hepmcevt;
-    if (verbose && iEvent%100 == 0) fmt::print(stderr, "[{}]  {}/{} \n", cp.gid(),  iEvent, b->state.num_events);;
+    if (iEvent%1000 == 0 && cp.gid()==0) fmt::print(stderr, "[{}]  {}/{} \n", cp.gid(),  iEvent, b->state.num_events);;
   }
 
   // Event loop is done, set xsection correctly and normalise histos
