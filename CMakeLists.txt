@@ -35,6 +35,9 @@ endif                       (${CMAKE_SYSTEM_NAME} MATCHES      "Darwin")
 find_package                (MPI REQUIRED)
     set                     (libraries ${libraries} ${MPI_C_LIBRARIES} ${MPI_CXX_LIBRARIES})
 
+find_package                (HDF5)
+    set                     (libraries ${libraries} ${HDF5_C_LIBRARIES} ${HDF5_CXX_LIBRARIES})
+
 # Threads
 find_package                (Threads)
 find_package                (OpenMP)
@@ -51,6 +54,7 @@ if                          (NOT diy_thread)
     add_definitions         (-DDIY_NO_THREADS)
 endif                       (NOT diy_thread)
 
+add_definitions         (-DDIY_NO_THREADS)
 # DIY
 find_path                   (DIY_INCLUDE_DIRS diy/types.h)
 
@@ -92,3 +96,14 @@ add_library(diygen SHARED config.cpp CalcConfig.cpp)
 
 add_executable              (pythia8-diy pythia8-diy.cpp)
 target_link_libraries       (pythia8-diy ${libraries} diygen)
+
+
+# Test if user has supplied -DHIGHFIVE_DIR                        
+if                          (LHEH5_DIR AND HIGHFIVE_DIR)
+    add_subdirectory        (withlheh5)
+else                        ()
+    message                 (ERROR " Need LHEH5 and HighFive in order to build program")
+endif                       ()
+
+# Build the reader example
+#add_subdirectory        (examples)
