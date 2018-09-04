@@ -33,6 +33,7 @@
 #include "YODA/AnalysisObject.h"
 
 #include "Pythia8/Pythia.h"
+#include "Pythia8/LHEF3.h"
 #include "Pythia8Plugins/HepMC2.h"
 #include "Rivet/AnalysisHandler.hh"
 #undef foreach // This line prevents a clash of definitions of rivet's legacy foreach with that of DIY
@@ -82,6 +83,8 @@ class LHAupH5 : public Pythia8::LHAup {
 
     // Flag to set particle production scales or not.
     bool setScalesFromLHEF_;
+    LHAscales scalesNow;
+
 
 };
 
@@ -129,6 +132,7 @@ bool LHAupH5::setInit()
      xErrSumSave += pow2(error[np]);
    }
 
+
   return true;
 }
 
@@ -144,6 +148,19 @@ bool LHAupH5::setEvent(int idProc)
     addParticle(part.id,part.status,part.mother1,part.mother2,part.color1,part.color2,
 		part.px,part.py,part.pz,part.e,part.m,part.lifetime,part.spin,scalein);
   }
+    
+  // Scale setting
+  scalesNow.clear();
+  scalesNow.muf   = eHeader.fscale;
+  scalesNow.mur   = eHeader.rscale;
+  scalesNow.mups  = eHeader.scale;
+
+  infoPtr->scales = &scalesNow;
+
+  // Trials --- TODO ask Stefan again
+  //infoPtr->setLHEF3EventInfo( &reader.hepeup.attributes, 0, 0, 0, 0, 0,
+       //vector<double>(), "", 1.0);
+
   //setIdX(this->id1(), this->id2(), this->x1(), this->x2());
   //setPdf(this->id1pdf(), this->id2pdf(), this->x1pdf(), this->x2pdf(),
          //this->scalePDF(), this->pdf1(), this->pdf2(), this->pdfIsSet());
@@ -451,6 +468,7 @@ int main(int argc, char* argv[])
 
     if( world.rank()==0 ) {
       fmt::print(stderr, "\n*** This is diy running Pythia8 ***\n");
+      fmt::print(stderr, "\n    LHE will be read from {}\n", in_file);
       fmt::print(stderr, "\n    Blocks:                  {}\n", blocks);
       fmt::print(stderr, "\n    Physics configurations:  {}\n", nConfigs);
       fmt::print(stderr, "\n    Number of events/config: {}\n", nEvents);

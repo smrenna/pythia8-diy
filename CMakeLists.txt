@@ -1,10 +1,17 @@
-project                     (gen)
+project                     (pythia8-diy)
 cmake_minimum_required      (VERSION 2.8)
 
-option                      (diy_thread     "Enable diy threading"                 ON)
+option                      (diy_thread     "Enable diy threading"                 OFF)
 
-# C++11
-set                         (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
+set(CMAKE_CXX_FLAGS "-Wall -Wextra")
+set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+
+set(CMAKE_CXX_STANDARD 11)
 
 # OSX flags
 if                          (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -58,6 +65,15 @@ add_definitions         (-DDIY_NO_THREADS)
 # DIY
 find_path                   (DIY_INCLUDE_DIRS diy/types.h)
 
+set (MY_PUBLIC_HEADERS 
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/CalcConfig.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/config.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/GenericBlock.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/opts.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/Reduce.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/Serialisation.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/Tools.hpp
+    )
 
 # Include dirs
 set                         (CMAKE_INCLUDE_SYSTEM_FLAG_CXX "-isystem")
@@ -69,8 +85,6 @@ include_directories         (${CMAKE_CURRENT_SOURCE_DIR}/include
                             ${PYTHIA8_DIR}/include
                              SYSTEM ${MPI_INCLUDE_PATH}
                             )
-
-
 
 # Figure out correct library suffix
 if                          (APPLE)
@@ -88,22 +102,83 @@ set                         (libraries
 			     ${RIVET_DIR}/lib/libRivet${CMAKE_SHARED_LIBRARY_SUFFIX}
                              ${HEPMC_DIR}/lib/libHepMC${CMAKE_SHARED_LIBRARY_SUFFIX}
                              ${PYTHIA8_DIR}/lib/libpythia8${CMAKE_SHARED_LIBRARY_SUFFIX}
-                             ${CMAKE_THREAD_LIBS_INIT})
+                             )
 
 
-#Generate the shared library from the sources
-add_library(diygen SHARED config.cpp CalcConfig.cpp)
+# Test if libs are found
+find_library(YODA_LIB
+    NAMES libYODA${CMAKE_SHARED_LIBRARY_SUFFIX}
+    HINTS "${YODA_DIR}/lib"
+    )
+if(NOT YODA_LIB)
+    message(FATAL_ERROR "YODA library not found --- check -DYODA_DIR")
+endif()
 
-add_executable              (pythia8-diy pythia8-diy.cpp)
-target_link_libraries       (pythia8-diy ${libraries} diygen)
+find_library(RIVET_LIB
+    NAMES libRivet${CMAKE_SHARED_LIBRARY_SUFFIX}
+    HINTS "${RIVET_DIR}/lib"
+    )
+if(NOT RIVET_LIB)
+    message(FATAL_ERROR "RIVET library not found --- check -DRIVET_DIR")
+endif()
+
+find_library(HEPMC_LIB
+    NAMES libHepMC${CMAKE_SHARED_LIBRARY_SUFFIX}
+    HINTS "${HEPMC_DIR}/lib"
+    )
+if(NOT HEPMC_LIB)
+    message(FATAL_ERROR "HEPMC library not found --- check -DHEPMC_DIR")
+endif()
+
+find_library(PYTHIA8_LIB
+    NAMES libpythia8${CMAKE_SHARED_LIBRARY_SUFFIX}
+    HINTS "${PYTHIA8_DIR}/lib"
+    )
+if(NOT PYTHIA8_LIB)
+    message(FATAL_ERROR "PYTHIA8 library not found --- check -DPYTHIA8_DIR")
+endif()
+
+# If all found, add build target
+add_subdirectory        (src)
 
 
-# Test if user has supplied -DHIGHFIVE_DIR                        
+## Test if user has supplied -DHIGHFIVE_DIR                        
 if                          (LHEH5_DIR AND HIGHFIVE_DIR)
+    message("Configuring to build lhd hdf5 support")
+    set                         (libraries
+        ${libraries}
+        ${LHEH5_DIR}/lib/liblheh5${CMAKE_SHARED_LIBRARY_SUFFIX}
+        )
+    
+    find_library(LHEH5_LIB
+        NAMES liblheh5${CMAKE_SHARED_LIBRARY_SUFFIX}
+        HINTS "${LHEH5_DIR}/lib"
+        )
+    if(NOT LHEH5_LIB)
+        message(FATAL_ERROR "LHEH5 library not found --- check -DLHEH5_DIR")
+    endif()
+
+    find_file(HAVE_H5_H
+        NAMES H5File.hpp
+        HINTS "${HIGHFIVE_DIR}/include/highfive" 
+        )
+    if(NOT HAVE_H5_H)
+        message(FATAL_ERROR "Specified HighFive dir not found --- check -DHIGHFIVE_DIR")
+    endif()
+
     add_subdirectory        (withlheh5)
 else                        ()
-    message                 (ERROR " Need LHEH5 and HighFive in order to build program")
+    message                 (INFO " Need LHEH5 and HighFive in order to build lhehdf program")
 endif                       ()
 
-# Build the reader example
-#add_subdirectory        (examples)
+set(CPACK_PACKAGE_VERSION_MAJOR "0")
+set(CPACK_PACKAGE_VERSION_MINOR "1")
+set(CPACK_PACKAGE_VERSION_PATCH "1")
+set(CPACK_SOURCE_GENERATOR "TGZ")
+set(CPACK_SOURCE_PACKAGE_FILE_NAME
+  "${CMAKE_PROJECT_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}")
+set(CPACK_SOURCE_IGNORE_FILES
+  ".git;~;build;${CPACK_SOURCE_IGNORE_FILES}")
+include(CPack)
+
+add_custom_target(dist COMMAND ${CMAKE_MAKE_PROGRAM} package_source)
