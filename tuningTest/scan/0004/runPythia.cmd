@@ -1,9 +1,0 @@
-Beams:idA = 11
-Beams:idB = -11
-Beams:eCM = 91.2
-WeakSingleBoson:ffbar2gmZ = on
-StringZ:aLund = 1.75757921022
-StringZ:bLund = 0.237073099692
-StringPT:enhancedFraction = 0.810552688484
-StringPT:enhancedWidth = 2.17747944421
-StringPT:sigma = 0.626025893986
