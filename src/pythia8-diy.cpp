@@ -200,6 +200,7 @@ int main(int argc, char* argv[])
 
     size_t nBlocks = 0;
     int threads = 1;
+    int runnum = -1;
     int nEvents=1000;
     size_t seed=1234;
     vector<std::string> analyses;
@@ -220,6 +221,7 @@ int main(int argc, char* argv[])
     ops >> Option('s', "seed",      seed,      "The Base seed --- this is incremented for each block.");
     ops >> Option('p', "pfile",     pfile,     "Parameter config file for testing __or__ input file name to look for in directory.");
     ops >> Option('i', "indir",     indir,     "Input directory with hierarchical pfiles");
+    ops >> Option('r', "runnum",    runnum,    "Use only runs ending runnum");
     if (ops >> Present('h', "help", "Show help"))
     {
         std::cout << "Usage: " << argv[0] << " [OPTIONS]\n";
@@ -239,7 +241,11 @@ int main(int argc, char* argv[])
        f_ok = readConfig(pfile, physConfig, verbose);
        if (!f_ok) {
           // Use glob to look for files in directory
-          for (auto f : glob(indir + "/*/" + pfile)) {
+          std::string pattern = indir + "/*/" + pfile;
+          if (runnum >=0) {
+             pattern =  indir + "/*" + std::to_string(runnum) + "/" + pfile;
+          } 
+          for (auto f : glob(pattern)) {
              physConfig.clear();
              bool this_ok = readConfig(f, physConfig, verbose);
              if (this_ok) {
