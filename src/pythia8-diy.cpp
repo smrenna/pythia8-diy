@@ -299,6 +299,7 @@ int main(int argc, char* argv[])
       fmt::print(stderr, "\n    Physics configurations:  {}\n", nConfigs);
       fmt::print(stderr, "\n    Number of events/config: {}\n", nEvents);
       fmt::print(stderr, "\n    Total number of events:  {}\n", nEvents*nConfigs);
+      fmt::print(stderr, "\n    World size:  {}\n", world.size());
       fmt::print(stderr, "***********************************\n");
     }
 
