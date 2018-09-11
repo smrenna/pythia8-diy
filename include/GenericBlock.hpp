@@ -5,6 +5,7 @@
 #include "Pythia8Plugins/HepMC2.h"
 
 #include "Rivet/AnalysisHandler.hh"
+#include "Pythia8Plugins/LHAMadgraph.h" // MadGraph
 #undef foreach // This line prevents a clash of definitions of rivet's legacy foreach with that of DIY
 
 #include "HepMC/IO_GenEvent.h"
@@ -83,6 +84,8 @@ struct GenericBlock
   Rivet::AnalysisHandler *ah;
   HepMC::Pythia8ToHepMC ToHepMC;
   std::vector<std::string> physConfig; // This is the pythia steering card, line by line
+
+  LHAupMadgraph* mg5; // NLO generator
   
 private:
   GenericBlock() { }

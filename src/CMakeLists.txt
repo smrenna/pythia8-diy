@@ -16,3 +16,10 @@ install(TARGETS pythia8-diy
     DESTINATION ${CMAKE_INSTALL_PREFIX/bin}
     RUNTIME DESTINATION bin
     )
+
+add_executable              (mg5_py8_diy mg5_py8_diy.cpp)
+target_link_libraries (mg5_py8_diy LINK_PUBLIC ${libraries} diygen)
+install(TARGETS mg5_py8_diy
+    DESTINATION ${CMAKE_INSTALL_PREFIX/bin}
+    RUNTIME DESTINATION bin
+	)

@@ -15,6 +15,9 @@ struct PointConfig
   std::vector<std::string> conf;
   std::vector<std::string> analyses;
   std::string f_out;
+  std::string detector_conf;
+  std::vector<std::string> mg5_conf;
+  bool use_mg5;
 };
 
 typedef std::vector<PointConfig> PointConfigs;

@@ -39,8 +39,8 @@ if                          (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 endif                       (${CMAKE_SYSTEM_NAME} MATCHES      "Darwin")
 
  # MPI
-find_package                (MPI REQUIRED)
-    set                     (libraries ${libraries} ${MPI_C_LIBRARIES} ${MPI_CXX_LIBRARIES})
+ #find_package                (MPI REQUIRED)
+ #   set                     (libraries ${libraries} ${MPI_C_LIBRARIES} ${MPI_CXX_LIBRARIES})
 
 find_package                (HDF5)
     set                     (libraries ${libraries} ${HDF5_C_LIBRARIES} ${HDF5_CXX_LIBRARIES})
@@ -79,11 +79,12 @@ set (MY_PUBLIC_HEADERS
 set                         (CMAKE_INCLUDE_SYSTEM_FLAG_CXX "-isystem")
 include_directories         (${CMAKE_CURRENT_SOURCE_DIR}/include
                             ${DIY_INCLUDE_DIRS}
-			    ${YODA_DIR}/include
+			    			${YODA_DIR}/include
                             ${HEPMC_DIR}/include
                             ${RIVET_DIR}/include
                             ${PYTHIA8_DIR}/include
-                             SYSTEM ${MPI_INCLUDE_PATH}
+							${FASTJETS_DIR}/include
+                            #SYSTEM ${MPI_INCLUDE_PATH}
                             )
 
 # Figure out correct library suffix
@@ -98,10 +99,12 @@ endif                       ()
 # Libraries
 set                         (libraries
                              ${libraries}
-			     ${YODA_DIR}/lib/libYODA${CMAKE_SHARED_LIBRARY_SUFFIX}
-			     ${RIVET_DIR}/lib/libRivet${CMAKE_SHARED_LIBRARY_SUFFIX}
+			     			 ${YODA_DIR}/lib/libYODA${CMAKE_SHARED_LIBRARY_SUFFIX}
+			     			 ${RIVET_DIR}/lib/libRivet${CMAKE_SHARED_LIBRARY_SUFFIX}
                              ${HEPMC_DIR}/lib/libHepMC${CMAKE_SHARED_LIBRARY_SUFFIX}
                              ${PYTHIA8_DIR}/lib/libpythia8${CMAKE_SHARED_LIBRARY_SUFFIX}
+							 ${FASTJETS_DIR}/lib/libfastjet${CMAKE_SHARED_LIBRARY_SUFFIX}
+                             ${CMAKE_THREAD_LIBS_INIT}
                              )
 
 

@@ -71,12 +71,22 @@ PointConfigs mkSingleRunConfigs(size_t n_ranks, size_t n_events, size_t base_see
   return std::move(revised);
 }
 
-PointConfig mkRunConfig(size_t n_ranks, size_t n_events, size_t base_seed, std::vector<std::string> conf, std::vector<std::string> analyses, std::string f_out)
+PointConfig mkRunConfig(size_t n_ranks, size_t n_events, size_t base_seed, std::vector<std::string> conf,
+		std::vector<std::string> analyses, std::string f_out, std::string f_det, std::vector<std::string> mg5_cnf, bool use_mg5)
 {
-  PointConfig pc;
-
   auto n_perrank = ceil(n_events/n_ranks);
 
   // Set config
-  return {1, static_cast<size_t>(n_perrank), base_seed, 1, conf, analyses, f_out};
+  return {1, static_cast<size_t>(n_perrank), base_seed, 1, conf, analyses, f_out, f_det, mg5_cnf, use_mg5};
+}
+
+PointConfig mkRunConfig(size_t n_ranks, size_t n_events, size_t base_seed, std::vector<std::string> conf,
+		std::vector<std::string> analyses, std::string f_out, std::string f_det)
+{
+  auto n_perrank = ceil(n_events/n_ranks);
+
+  std::vector<std::string> mg5_cnf;
+  mg5_cnf.push_back("NONE");
+  // Set config
+  return {1, static_cast<size_t>(n_perrank), base_seed, 1, conf, analyses, f_out, f_det, mg5_cnf, false};
 }

@@ -20,31 +20,46 @@ namespace diy {
        diy::save(bb, m.num_events);
        diy::save(bb, m.seed);
        diy::save(bb, m.physics_id);
+
        diy::save(bb, m.conf.size());
        for (auto s : m.conf) diy::save(bb, s);
+
        diy::save(bb, m.analyses.size());
        for (auto s : m.analyses) diy::save(bb, s);
+
        diy::save(bb, m.f_out);
+       diy::save(bb, m.detector_conf);
+
+       diy::save(bb, m.mg5_conf.size());
+	   for (auto s : m.mg5_conf) diy::save(bb, s);
+
+	   diy::save(bb, m.use_mg5);
     }
     static void load(diy::BinaryBuffer& bb, PointConfig& m)
     {
        size_t size;
        diy::load(bb, size);
        m.psp_id=size;
+
        diy::load(bb, size);
        m.num_events=size;
+
        diy::load(bb, size);
        m.seed=size;
+
        diy::load(bb, size);
        m.physics_id=size;
+
        diy::load(bb, size);
-       std::string temp;
        m.conf.resize(size);
+
+       std::string temp;
        for (size_t i=0;i<size;++i) { // Iteration over now known number of elements
           // Elementwise loading of string from bb using diy's native load for std::string
           diy::load(bb, temp);
           m.conf[i] = temp;
        }
+
        diy::load(bb, size);
        m.analyses.resize(size);
        for (size_t i=0;i<size;++i) { // Iteration over now known number of elements
@@ -52,8 +67,21 @@ namespace diy {
           diy::load(bb, temp);
           m.analyses[i] = temp;
        }
+
        diy::load(bb, temp);
        m.f_out = temp;
+       diy::load(bb, temp);
+       m.detector_conf = temp;
+
+	   diy::load(bb, size);
+	   m.mg5_conf.resize(size);
+	   for (size_t i=0; i< size;  ++i){
+		   diy::load(bb, temp);
+		   m.mg5_conf[i] = temp;
+	   }
+	   bool b_val;
+	   diy::load(bb, b_val);
+	   m.use_mg5 = b_val;
     }
   };
   

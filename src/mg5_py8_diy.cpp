@@ -34,6 +34,7 @@
 
 #include "Pythia8/Pythia.h"
 #include "Pythia8Plugins/HepMC2.h"
+#include "Pythia8Plugins/LHAMadgraph.h" // For MadGraph5 
 #include "Rivet/AnalysisHandler.hh"
 #undef foreach // This line prevents a clash of definitions of rivet's legacy foreach with that of DIY
 
@@ -73,6 +74,10 @@ void print_block(Block* b,                             // local block
    fmt::print(stderr, "\t[{}]: {}\n", cp.gid(), b->state.detector_conf);
    fmt::print(stderr, "output:");
    fmt::print(stderr, "\t[{}]: {}\n", cp.gid(), b->state.f_out);
+   fmt::print(stderr, "MadGraph5:\n");
+   for (auto s : b->state.mg5_conf) {
+      fmt::print(stderr, "\t[{}]: {}\n", cp.gid(), s);
+   }
    fmt::print(stderr, "\n");
 }
 
@@ -92,9 +97,9 @@ std::string basepath(const std::string& pathname){
 }
 
 
-//void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> physConfig, std::vector<std::string> analyses, bool verbose)
 void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank,  bool verbose, int npc)
 {
+	fmt::print(stderr, "{} Start to process\n", cp.gid());
   // This make rivet only report ERRORs
   // TODO: can we have a global flag to steer verbosity of all moving parts?
   if (!verbose) Rivet::Log::setLevel("Rivet", Rivet::Log::ERROR);
@@ -103,8 +108,32 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank,  bo
   if (verbose) b->pythia.readString("Print:quiet = off");
   else b->pythia.readString("Print:quiet = on");
 
-  // Configure pythia with a vector of strings
-  for (auto s  : b->state.conf) b->pythia.readString(s);
+  // Add MadGraph
+  if(b->state.use_mg5) {
+	  fmt::print(stderr, "{} I am HERE\n", cp.gid());
+	  // if(b->mg5) delete b->mg5;
+	  if(!b->mg5) {
+		  try{
+			  fmt::print(stderr, "{} LHAupMadgraph WAAA\n", cp.gid());
+			  b->mg5 = new LHAupMadgraph(&(b->pythia), true, "amcatnlorun_"+cp.gid(), "mg5_aMC");
+		  } catch(const std::bad_alloc& e) {
+			  fmt::print(stderr, "{} cannot iniatiate LHAupMadgraph\n", cp.gid());
+		  }
+	  } else {
+		  fmt::print(stderr, "{} LHAupMadgraph already there!\n", cp.gid());
+	  }
+	  for(auto s: b->state.mg5_conf) b->mg5->readString(s);
+	  try {
+		  b->pythia.setLHAupPtr(b->mg5);
+	  } catch (const std::bad_alloc& e){
+		  fmt::print(stderr, "{} HERE?", cp.gid());
+	  }
+  } else {
+	  // Configure pythia with a vector of strings
+	  for (auto s  : b->state.conf) b->pythia.readString(s);
+  }
+
+  fmt::print(stderr, "{} HERE 3 \n", cp.gid());
 
   // Py8 random seed for this block read from point config
   b->pythia.readString("Random:setSeed = on");
@@ -112,8 +141,11 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank,  bo
   b->pythia.readString("Main:numberOfEvents = " + std::to_string(b->state.num_events));
 
   // All configurations done, initialise Pythia
-  b->pythia.initPtrs(); // TODO --- is this really necessary here?
+  // b->pythia.initPtrs(); // TODO --- is this really necessary here?
+  fmt::print(stderr, "{} HERE 3.2 \n", cp.gid());
   b->pythia.init();
+  fmt::print(stderr, "{} HERE 3.3 \n", cp.gid());
+  b->pythia.settings.listChanged();
 
   // Delete the AnalysisHandlerPtr to ensure there is no memory
   if (b->ah)
@@ -129,6 +161,7 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank,  bo
 
   // Update Rivet simulation
   b->ah->setSimulationFile(b->state.detector_conf.c_str());
+
   // The event loop
   int nAbort = b->pythia.mode("Main:timesAllowErrors");
   int iAbort = 0;
@@ -226,14 +259,14 @@ int main(int argc, char* argv[])
 
     size_t nBlocks = 0;
     int threads = 1;
-    int runnum = -1;
     int nEvents=1000;
     size_t seed=1234;
     vector<std::string> analyses;
     std::string out_file="diy.yoda";
     std::string pfile="runPythia.cmd";
     std::string dfile="detector_config.yoda";
-    std::string indir="";
+    std::string indir=".";
+	std::string mfile = "mg5.cmd";
     // get command line arguments
     using namespace opts;
     Options ops(argc, argv);
@@ -248,8 +281,8 @@ int main(int argc, char* argv[])
     ops >> Option('s', "seed",      seed,      "The Base seed --- this is incremented for each block.");
     ops >> Option('p', "pfile",     pfile,     "Parameter config file for testing __or__ input file name to look for in directory.");
     ops >> Option('d', "dfile",     dfile,     "detector config file for testing __or__ input file name to look for in directory.");
-    ops >> Option('i', "indir",     indir,     "Input directory with hierarchical pfiles");
-    ops >> Option('r', "runnum",    runnum,    "Use only runs ending runnum");
+    ops >> Option('m', "mfile",     mfile,     "MadGraph5 config file for testing __or__ input file name to look for in directory.");
+    ops >> Option('i', "indir",     indir,     "Input directory with hierarchical configuration files");
     if (ops >> Present('h', "help", "Show help"))
     {
         std::cout << "Usage: " << argv[0] << " [OPTIONS]\n";
@@ -263,18 +296,18 @@ int main(int argc, char* argv[])
     std::vector<std::vector<std::string> > physConfigs;
     std::vector<std::string> out_files;
     std::vector<std::string> detectorConfigs;
+	// MadGraph Configureations
+    std::vector<std::string> mg5Config;
+    std::vector<std::vector<std::string> > mg5Configs;
     bool f_ok;
+	bool use_mg5 = true;
     if( world.rank()==0 ) {
        // Program logic: check whether a single parameter file has been given or
        // a directory.
        f_ok = readConfig(pfile, physConfig, verbose);
        if (!f_ok) {
           // Use glob to look for files in directory
-          std::string pattern = indir + "/*/" + pfile;
-          if (runnum >=0) {
-             pattern =  indir + "/*" + std::to_string(runnum) + "/" + pfile;
-          } 
-          for (auto f : glob(pattern)) {
+          for (auto f : glob(indir + "/*/" + pfile)) {
              physConfig.clear();
              bool this_ok = readConfig(f, physConfig, verbose);
              if (this_ok) {
@@ -286,13 +319,31 @@ int main(int argc, char* argv[])
 				detectorConfigs.push_back(basepath(f)+dfile);
              }
           }
-       } 
+       }
        else {
           physConfigs.push_back(physConfig);
           out_files.push_back(out_file);
 		  detectorConfigs.push_back(dfile);
        }
        nConfigs=physConfigs.size();
+	   // check if MadGraph configuration files are there
+	   f_ok = readConfig(mfile, mg5Config, verbose);
+	   if(!f_ok){
+		   for (auto f : glob(indir + "/*/" + mfile)) {
+				mg5Config.clear();
+				bool this_ok = readConfig(f, mg5Config, verbose);
+				if(this_ok) mg5Configs.push_back(mg5Config);
+		   }
+	   } else {
+		   mg5Configs.push_back(mg5Config);
+	   }
+	   if(mg5Configs.size() != physConfigs.size()){
+		   fmt::print(stderr, "Configurations for MadGraph and Pythia do not match\n Not using MadGraph5");
+		   mg5Configs.clear();
+		   mg5Config.push_back("NONE");
+		   mg5Configs.push_back(mg5Config);
+		   use_mg5 = false;
+	   }
     }
 
     MPI_Bcast(&nConfigs,   1, MPI_INT, 0, world);
@@ -340,13 +391,18 @@ int main(int argc, char* argv[])
       fmt::print(stderr, "\n    Number of events/config: {}\n", nEvents);
       fmt::print(stderr, "\n    Total number of events:  {}\n", nEvents*nConfigs);
       fmt::print(stderr, "\n    World size:  {}\n", world.size());
+      fmt::print(stderr, "\n    MadGraph configurations:  {}\n", mg5Configs.size());
       fmt::print(stderr, "***********************************\n");
     }
 
     PointConfig pc;
     for (size_t ipc=0;ipc<nConfigs;++ipc) {
        if (world.rank()==0) {
-          pc = mkRunConfig(blocks, nEvents, seed, physConfigs[ipc], analyses, out_files[ipc], detectorConfigs[ipc]);
+		   if(use_mg5) {
+			   pc = mkRunConfig(blocks, nEvents, seed, physConfigs[ipc], analyses, out_files[ipc], detectorConfigs[ipc], mg5Configs[ipc], true);
+		   } else {
+			   pc = mkRunConfig(blocks, nEvents, seed, physConfigs[ipc], analyses, out_files[ipc], detectorConfigs[ipc], mg5Configs[0], false);
+		   }
        }
 
        // We need to tell the first block about the new configuration
