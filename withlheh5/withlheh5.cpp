@@ -51,7 +51,7 @@ using namespace lheh5;
 
 class LHAupH5 : public Pythia8::LHAup {
   public:
-    LHAupH5( HighFive::File* file_, size_t firstEvent, size_t readSize) : _numberRead(0) {
+    LHAupH5( HighFive::File* file_, size_t firstEvent, size_t readSize) : _numberRead(0), _nTrials(0), _sumW(0) {
       file = file_;
       _index       = file->getGroup("index");
       _particle    = file->getGroup("particle");
@@ -79,6 +79,8 @@ class LHAupH5 : public Pythia8::LHAup {
     HighFive::Group                         _index, _particle, _event, _init, _procInfo;
     lheh5::Events                        lheevents;
     int                                     _numberRead;
+    int                                     _nTrials;
+    double                                  _sumW;
   
 
     // Flag to set particle production scales or not.
@@ -154,6 +156,7 @@ bool LHAupH5::setEvent(int idProc)
   scalesNow.muf   = eHeader.fscale;
   scalesNow.mur   = eHeader.rscale;
   scalesNow.mups  = eHeader.scale;
+  _nTrials += eHeader.trials;
 
   infoPtr->scales = &scalesNow;
 
@@ -225,6 +228,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   if (rank == size-1) {
      ev_rank = nEvents-eventOffset;
   }
+  size_t nTrials(0);
   // TODO: can't hurt to test whether this logic ^^^ is correct
 
   if (verbose) fmt::print(stderr, "[{}] reads {} events starting at {}\n", cp.gid(), ev_rank, eventOffset);
@@ -255,7 +259,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   // TODO: we may want to feed the "ignore beams" switch as well
   for (auto a : b->state.analyses) {
      b->ah->addAnalysis(a);
-     if (verbose) fmt::print(stderr, "[{}] add  ######## analysis {}\n", cp.gid(), a);
+     if (verbose) fmt::print(stderr, "[{}] add  ######## analysis {}\n", cp.gid());
   }
 
   if (verbose) fmt::print(stderr, "[{}] starting event loop\n", cp.gid());
@@ -268,10 +272,12 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
       if (++iAbort < nAbort) continue;
       break;
     }
+    if (verbose) fmt::print(stderr, "[{}] event weight {}\n", cp.gid(), LHAup->weight());
     if (verbose && iEvent < 2 ) LHAup->listEvent();
     HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
     b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
 
+    // Here more
     try {b->ah->analyze( *hepmcevt ) ;} catch (const std::exception& e)
     {
       if (verbose) fmt::print(stderr, "[{}] exception in analyze: {}\n", cp.gid(), e.what());
