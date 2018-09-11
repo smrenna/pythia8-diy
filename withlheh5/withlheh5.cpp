@@ -261,7 +261,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   // TODO: we may want to feed the "ignore beams" switch as well
   for (auto a : b->state.analyses) {
      b->ah->addAnalysis(a);
-     if (verbose) fmt::print(stderr, "[{}] add  ######## analysis {}\n", cp.gid());
+     if (verbose) fmt::print(stderr, "[{}] add  ######## analysis {}\n", cp.gid(), a);
   }
 
   if (verbose) fmt::print(stderr, "[{}] starting event loop\n", cp.gid());
