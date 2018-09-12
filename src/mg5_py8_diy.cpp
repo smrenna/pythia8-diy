@@ -257,7 +257,6 @@ int main(int argc, char* argv[])
     diy::mpi::environment env(argc, argv);
     diy::mpi::communicator world;
 
-    size_t nBlocks = 0;
     int threads = 1;
     int nEvents=1000;
     size_t seed=1234;
@@ -275,7 +274,6 @@ int main(int argc, char* argv[])
                                                            "verbose output");
     ops >> Option('t', "thread",    threads,   "Number of threads");
     ops >> Option('n', "nevents",   nEvents,   "Number of events to generate in total");
-    ops >> Option('b', "nblocks",   nBlocks,   "Number of blocks");
     ops >> Option('a', "analysis",  analyses,  "Rivet analyses --- can be given multiple times");
     ops >> Option('o', "output",    out_file,  "Output filename.");
     ops >> Option('s', "seed",      seed,      "The Base seed --- this is incremented for each block.");
@@ -348,6 +346,20 @@ int main(int argc, char* argv[])
 
     MPI_Bcast(&nConfigs,   1, MPI_INT, 0, world);
 
+	
+	size_t blocks;
+	const int MINIMUM_NUMBER_EVENTS = 2000;
+	if(nConfigs > 1){
+		int nEvts_per_rank = nEvents/world.size();
+		if(nEvts_per_rank < MINIMUM_NUMBER_EVENTS) {
+			blocks = nEvents/MINIMUM_NUMBER_EVENTS;
+		} else {
+			blocks = world.size();
+		}
+	} else {
+		blocks = world.s
+	}
+
 
 
     // ----- starting here is a lot of standard boilerplate code for this kind of
@@ -355,9 +367,15 @@ int main(int argc, char* argv[])
     int mem_blocks  = -1;  // all blocks in memory, if value here then that is how many are in memory
     int dim(1);
     
-    size_t blocks;
-    if (nBlocks==0) blocks= world.size() * threads;
-    else blocks=nBlocks;
+    size_t blocks = world.size() * threads;
+	// when more than one configurations, generate more blocks...
+	// mem_blocks needs to be adjusted.
+	if(nConfigs > 1){
+		auto blocks_per_config =  ceil(nEvents/MINIMUM_NUMBER_EVENTS); 
+		blocks = blocks_per_config * nConfigs;
+		mem_blocks = nConfigs;
+	}
+
     // diy initialization
     diy::FileStorage storage("./DIY.XXXXXX"); // used for blocks moved out of core
     Bounds domain;
@@ -394,6 +412,7 @@ int main(int argc, char* argv[])
       fmt::print(stderr, "\n    MadGraph configurations:  {}\n", mg5Configs.size());
       fmt::print(stderr, "***********************************\n");
     }
+
 
     PointConfig pc;
     for (size_t ipc=0;ipc<nConfigs;++ipc) {
