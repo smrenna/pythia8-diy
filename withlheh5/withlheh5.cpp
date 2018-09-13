@@ -290,7 +290,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
       break;
     }
     if (verbose) fmt::print(stderr, "[{}] event weight {} {} {}\n", cp.gid(), LHAup->weight(), b->pythia.info.weight(), b->pythia.info.eventWeightLHEF);
-    if (verbose && iEvent < 2 ) LHAup->listEvent();
+    if (verbose && iEvent < 5 ) LHAup->listEvent();
     HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
     b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
 
