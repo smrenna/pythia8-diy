@@ -125,6 +125,8 @@ bool LHAupH5::setInit()
    
    int numProcesses;
    _init.getDataSet("numProcesses").read(numProcesses);
+   fmt::print(stderr, "numProcesses {}\n", numProcesses);
+
 
    vector<int> procId;        // NOTE: C++17 allows int[numProcesses]
    vector<double> xSection;   // NOTE: C++17 allows double[numProcesses]
