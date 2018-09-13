@@ -73,8 +73,8 @@ class LHAupH5 : public Pythia8::LHAup {
     void setScalesFromLHEF(bool b) { setScalesFromLHEF_ = b; }
     
     // Read and set the info from init and procInfo
-    bool setInit();// override;
-    bool setEvent(int idProc=0);// override;
+    bool setInit() override;// override;
+    bool setEvent(int idProc=0) override;// override;
 
     int getSize() { return lheevents._vnparticles.size(); }
   
@@ -174,12 +174,12 @@ bool LHAupH5::setEvent(int idProc)
   }
     
   // Scale setting
-  //scalesNow.clear();
-  //scalesNow.muf   = eHeader.fscale;
-  //scalesNow.mur   = eHeader.rscale;
-  //scalesNow.mups  = eHeader.scale;
+  scalesNow.clear();
+  scalesNow.muf   = eHeader.fscale;
+  scalesNow.mur   = eHeader.rscale;
+  scalesNow.mups  = eHeader.scale;
 
-  //infoPtr->scales = &scalesNow;
+  infoPtr->scales = &scalesNow;
 
   fmt::print(stderr, "numread {}\n", _numberRead);
   // Trials --- TODO ask Stefan again
