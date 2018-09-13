@@ -9,6 +9,8 @@
 #undef foreach // This line prevents a clash of definitions of rivet's legacy foreach with that of DIY
 
 #include "HepMC/IO_GenEvent.h"
+#include "Tools.hpp"
+#include <math.h>
 
 using namespace std;
 using namespace Pythia8;
@@ -70,13 +72,87 @@ struct GenericBlock
   // add my buffer data into "other"
   void altreduce_buffer(data_type& other) const { altreduce(other,buffer); }
 
+  std::string dir_name(int dir_idx)
+  {
+	  int mag;
+	  if(dir_idx < 1) mag = 0;
+	  else if(dir_idx == 1) mag = 1;
+	  else {
+		  mag = ceil(log10(dir_idx));
+		  if(dir_idx % 10 == 0) mag += 1;
+	  }
+
+	  std::string out("000000");
+	  std::cout << " is with magnitude of " << mag << " --> ";
+	  if(mag >= 6) {
+		  return std::to_string(dir_idx);
+	  } else {
+		  return out.substr(0, 6-mag)+std::to_string(dir_idx);
+	  }
+  }
+
+
+  void init_data(const diy::Master::ProxyWithLink& cp,
+		  int nConfigs,
+		  int nEvents,
+		  int seed,
+		  std::string& indir,
+		  std::string& pythia_conf, 
+		  std::vector<std::string>& analyses,
+		  std::string& f_out,
+		  std::string& detector_conf, 
+		  std::string& mg5_conf, 
+		  bool verbose
+		  )
+  {
+	  if (cp.gid() > nConfigs - 1) return;
+
+	  string dir;
+	  if(nConfigs > 1) {
+		int dim = bounds.min.size();
+		int config_idx = bounds.min[1];
+		string dir(indir +"/"+ dir_name(config_idx));
+	  } else {
+		 dir = indir; 
+	  }
+	  create_state(dir, nEvents, seed, pythia_conf, analyses, f_out, detector_conf, mg5_conf, verbose);
+  }
+
+  void create_state(
+		  std::string& indir,
+		  int nEvents,
+		  int seed,
+		  std::string& pythia_conf, 
+		  std::vector<std::string>& analyses,
+		  std::string& f_out,
+		  std::string& detector_conf, 
+		  std::string& mg5_conf, 
+		  bool verbose
+		  )
+  {
+	  bool f_ok;
+
+	  std::vector<std::string> physConfig;
+	  physConfig.clear();
+	  f_ok = readConfig(indir+"/"+pythia_conf, physConfig,  verbose);
+	  if(!f_ok) throw(std::system_error(ENOENT, std::iostream_category(), indir+"/"+pythia_conf));	
+
+
+	  std::vector<std::string> mg5Config;
+	  mg5Config.clear();
+	  bool use_mg5 = readConfig(indir+"/"+mg5_conf, mg5Config,  verbose);
+
+	  state = {1, nEvents, seed, 1, physConfig, analyses, indir+"/"+f_out, detector_conf, mg5Config, use_mg5};
+  }
+
+
   // -----------
   // block data
   bounds_type bounds;
   state_type state;
   data_type data;
   data_type buffer;
-    
+
   Pythia pythia; // The generator
   // Shorthand for the event record in pythia.
   Event& event = pythia.event;
@@ -86,8 +162,8 @@ struct GenericBlock
   std::vector<std::string> physConfig; // This is the pythia steering card, line by line
 
   LHAupMadgraph* mg5; // NLO generator
-  
-private:
+
+	private:
   GenericBlock() { }
 };
 
