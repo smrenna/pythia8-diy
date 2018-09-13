@@ -128,7 +128,7 @@ bool LHAupH5::setInit()
    fmt::print(stderr, "numProcesses {}\n", numProcesses);
 
    // NOTE this is a hack for testing only
-   //numProcesses = 1;
+   numProcesses = 1;
 
 
    vector<int> procId;        // NOTE: C++17 allows int[numProcesses]
