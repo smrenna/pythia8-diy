@@ -51,7 +51,7 @@ using namespace lheh5;
 
 class LHAupH5 : public Pythia8::LHAup {
   public:
-    LHAupH5( HighFive::File* file_, size_t firstEvent, size_t readSize) : _numberRead(0), _nTrials(0), _sumW(0) {
+    LHAupH5( HighFive::File* file_, size_t firstEvent, size_t readSize, bool verbose=false) : _numberRead(0),  _sumW(0) {
       file = file_;
       _index       = file->getGroup("index");
       _particle    = file->getGroup("particle");
@@ -61,6 +61,12 @@ class LHAupH5 : public Pythia8::LHAup {
       // This reads and holds the information of readSize events, starting from firstEvent
       setInit();
       lheevents = lheh5::readEvents(_index, _particle, _event, firstEvent, readSize);
+     // Sum of trials for this block
+     DataSet _trials     =  file->getDataSet("event/trials");
+     std::vector<int>    _vtrials;
+     _trials    .select({firstEvent}, {readSize}).read(_vtrials);
+     _nTrials = std::accumulate(_vtrials.begin(), _vtrials.end(), 0);
+     if (verbose) fmt::print(stderr, "sum trials {}\n", _nTrials);
     }
   
        
@@ -143,7 +149,7 @@ bool LHAupH5::setEvent(int idProc)
 
   lheh5::EventHeader eHeader = lheevents.mkEventHeader( _numberRead );
 
-  setProcess(eHeader.pid,eHeader.weight,eHeader.scale,eHeader.aqed,eHeader.aqcd);
+  setProcess(eHeader.pid,eHeader.weight*(1. / (1e9*_nTrials)),eHeader.scale,eHeader.aqed,eHeader.aqcd);
 
   //nupSave    = eheader.nparticles;
   //idprupSave = eheader.pid;
@@ -166,7 +172,6 @@ bool LHAupH5::setEvent(int idProc)
   scalesNow.muf   = eHeader.fscale;
   scalesNow.mur   = eHeader.rscale;
   scalesNow.mups  = eHeader.scale;
-  _nTrials += eHeader.trials;
 
   infoPtr->scales = &scalesNow;
 
@@ -241,17 +246,11 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
      ev_rank = nEvents-eventOffset;
   }
 
-  // Sum of trials for this block
-  DataSet _trials     =  file.getDataSet("event/trials");
-  std::vector<int>    _vtrials;
-  _trials    .select({eventOffset}, {ev_rank}).read(_vtrials);
-  int nTrials = std::accumulate(_vtrials.begin(), _vtrials.end(), 0);
-  if (verbose) fmt::print(stderr, "[{}] sum trials {}\n", cp.gid(), nTrials);
   // TODO: can't hurt to test whether this logic ^^^ is correct
 
   if (verbose) fmt::print(stderr, "[{}] reads {} events starting at {}\n", cp.gid(), ev_rank, eventOffset);
   // Create an LHAup object that can access relevant information in pythia.
-  LHAupH5* LHAup = new LHAupH5( &file , eventOffset, ev_rank);
+  LHAupH5* LHAup = new LHAupH5( &file , eventOffset, ev_rank, verbose);
 
   if (verbose) LHAup->listInit();
   if (verbose) fmt::print(stderr, "[{}] read {} events\n", cp.gid(), LHAup->getSize());
@@ -291,9 +290,6 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
       break;
     }
     if (verbose) fmt::print(stderr, "[{}] event weight {} {} {}\n", cp.gid(), LHAup->weight(), b->pythia.info.weight(), b->pythia.info.eventWeightLHEF);
-    b->pythia.info.weight() * 1. / (1e9*nTrials);
-    if (verbose) fmt::print(stderr, "[{}] event weight {} {} {}\n", cp.gid(), LHAup->weight(), b->pythia.info.weight(), b->pythia.info.eventWeightLHEF);
-    if (verbose) fmt::print(stderr, "[{}] event weight should be {}\n", cp.gid(), b->pythia.info.weight()* 1. / (1e9*nTrials));
     if (verbose && iEvent < 2 ) LHAup->listEvent();
     HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
     b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
