@@ -73,8 +73,8 @@ class LHAupH5 : public Pythia8::LHAup {
     void setScalesFromLHEF(bool b) { setScalesFromLHEF_ = b; }
     
     // Read and set the info from init and procInfo
-    bool setInit() override;
-    bool setEvent(int idProc=0) override;
+    bool setInit();// override;
+    bool setEvent(int idProc=0);// override;
 
     int getSize() { return lheevents._vnparticles.size(); }
   
