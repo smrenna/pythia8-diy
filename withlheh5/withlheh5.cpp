@@ -174,12 +174,12 @@ bool LHAupH5::setEvent(int idProc)
   }
     
   // Scale setting
-  scalesNow.clear();
-  scalesNow.muf   = eHeader.fscale;
-  scalesNow.mur   = eHeader.rscale;
-  scalesNow.mups  = eHeader.scale;
+  //scalesNow.clear();
+  //scalesNow.muf   = eHeader.fscale;
+  //scalesNow.mur   = eHeader.rscale;
+  //scalesNow.mups  = eHeader.scale;
 
-  infoPtr->scales = &scalesNow;
+  //infoPtr->scales = &scalesNow;
 
   fmt::print(stderr, "numread {}\n", _numberRead);
   // Trials --- TODO ask Stefan again
