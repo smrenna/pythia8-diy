@@ -182,6 +182,9 @@ bool LHAupH5::setEvent(int idProc)
   infoPtr->scales = &scalesNow;
 
   fmt::print(stderr, "numread {}\n", _numberRead);
+  listEvent();
+  listInit();
+
   // Trials --- TODO ask Stefan again
   //infoPtr->setLHEF3EventInfo( &reader.hepeup.attributes, 0, 0, 0, 0, 0,
        //vector<double>(), "", 1.0);
@@ -273,7 +276,6 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
 
   // All configurations done, initialise Pythia
   b->pythia.init();
-  LHAup->listInit();
 
   // Delete the AnalysisHandlerPtr to ensure there is no memory
   if (b->ah)
