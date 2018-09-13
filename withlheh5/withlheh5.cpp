@@ -246,7 +246,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   std::vector<int>    _vtrials;
   _trials    .select({eventOffset}, {ev_rank}).read(_vtrials);
   int nTrials = std::accumulate(_vtrials.begin(), _vtrials.end(), 0);
-
+  if (verbose) fmt::print(stderr, "[{}] sum trials {}\n", cp.gid(), nTrials);
   // TODO: can't hurt to test whether this logic ^^^ is correct
 
   if (verbose) fmt::print(stderr, "[{}] reads {} events starting at {}\n", cp.gid(), ev_rank, eventOffset);
