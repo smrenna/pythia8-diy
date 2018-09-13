@@ -151,12 +151,12 @@ bool LHAupH5::setEvent(int idProc)
 
   //setProcess(eHeader.pid,eHeader.weight*(1. / (1e9*_nTrials)),eHeader.scale,eHeader.aqed,eHeader.aqcd);
 
-  nupSave    = eheader.nparticles;
-  idprupSave = eheader.pid;
-  xwgtupSave = eheader.weight*(1. / (1e9*_nTrials));
-  scalupSave = eheader.scale; // TODO which scale?
-  aqedupSave = eheader.aqed;
-  aqcdupSave = eheader.aqcd;
+  nupSave    = eHeader.nparticles;
+  idprupSave = eHeader.pid;
+  xwgtupSave = eHeader.weight*(1. / (1e9*_nTrials));
+  scalupSave = eHeader.scale; // TODO which scale?
+  aqedupSave = eHeader.aqed;
+  aqcdupSave = eHeader.aqcd;
   // Set directly!  what is scale?   
   //getpro >> nupSave >> idprupSave >> xwgtupSave >> scalupSave
     //>> aqedupSave >> aqcdupSave;
