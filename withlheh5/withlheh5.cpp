@@ -156,12 +156,12 @@ bool LHAupH5::setEvent(int idProc)
 
   setProcess(eHeader.pid,eHeader.weight*(1. / (1e9*_nTrials)),eHeader.scale,eHeader.aqed,eHeader.aqcd);
 
-  //nupSave    = eHeader.nparticles;
-  //idprupSave = eHeader.pid;
-  //xwgtupSave = eHeader.weight*(1. / (1e9*_nTrials));
-  //scalupSave = eHeader.scale; // TODO which scale?
-  //aqedupSave = eHeader.aqed;
-  //aqcdupSave = eHeader.aqcd;
+  nupSave    = eHeader.nparticles;
+  idprupSave = eHeader.pid;
+  xwgtupSave = eHeader.weight*(1. / (1e9*_nTrials));
+  scalupSave = eHeader.scale; // TODO which scale?
+  aqedupSave = eHeader.aqed;
+  aqcdupSave = eHeader.aqcd;
   // Set directly!  what is scale?   
   //getpro >> nupSave >> idprupSave >> xwgtupSave >> scalupSave
     //>> aqedupSave >> aqcdupSave;
@@ -252,7 +252,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   size_t nEvents  =  H5Sget_simple_extent_npoints(dspace);
   size_t ev_rank = floor(nEvents/size);
   // Detect testing
-  if (ev_rank > 1e6) ev_rank = 1e6;
+  if (ev_rank > 1e6) ev_rank = 1e4;
   size_t eventOffset = rank*ev_rank;
   if (rank == size-1 && size>1) {
      ev_rank = nEvents-eventOffset;
