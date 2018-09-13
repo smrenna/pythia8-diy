@@ -257,12 +257,15 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
 
   // TODO: can't hurt to test whether this logic ^^^ is correct
 
-  if (verbose) fmt::print(stderr, "[{}] reads {} events starting at {}\n", cp.gid(), ev_rank, eventOffset);
+  //if (verbose) 
+     fmt::print(stderr, "[{}] reads {} events starting at {}\n", cp.gid(), ev_rank, eventOffset);
   // Create an LHAup object that can access relevant information in pythia.
   LHAupH5* LHAup = new LHAupH5( &file , eventOffset, ev_rank, verbose);
 
-  if (verbose) LHAup->listInit();
-  if (verbose) fmt::print(stderr, "[{}] read {} events\n", cp.gid(), LHAup->getSize());
+  //if (verbose) 
+     LHAup->listInit();
+  //if (verbose) 
+     fmt::print(stderr, "[{}] read {} events\n", cp.gid(), LHAup->getSize());
 
   // Give the external reader to Pythia
   b->pythia.setLHAupPtr(LHAup);
@@ -290,7 +293,8 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   // The event loop
   int nAbort = 5;
   int iAbort = 0;
-  if (verbose) fmt::print(stderr, "[{}] generating {} events\n", cp.gid(),  LHAup->getSize());
+  //if (verbose) 
+     fmt::print(stderr, "[{}] generating {} events\n", cp.gid(),  LHAup->getSize());
   for (int iEvent = 0; iEvent < LHAup->getSize(); ++iEvent) {
     if (!b->pythia.next()) {
       if (++iAbort < nAbort) continue; // TODO investigate influenec of apbort on sum trials
@@ -301,6 +305,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
     if (verbose && iEvent < 5 ) LHAup->listEvent();
     HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
     b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
+    fmt::print(stderr, "[{}] now Rivet {} \n", cp.gid());
 
     // Here more
     try {b->ah->analyze( *hepmcevt ) ;} catch (const std::exception& e)
