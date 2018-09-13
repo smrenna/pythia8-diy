@@ -175,6 +175,7 @@ bool LHAupH5::setEvent(int idProc)
 
   infoPtr->scales = &scalesNow;
 
+  fmt::print(stderr, "numread {}\n", _numberRead);
   // Trials --- TODO ask Stefan again
   //infoPtr->setLHEF3EventInfo( &reader.hepeup.attributes, 0, 0, 0, 0, 0,
        //vector<double>(), "", 1.0);
