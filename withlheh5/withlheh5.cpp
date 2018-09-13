@@ -301,9 +301,9 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
       if (++iAbort < nAbort) continue; // TODO investigate influenec of apbort on sum trials
       break;
     }
+    if (verbose && iEvent < 5 ) LHAup->listEvent();
     if (verbose) fmt::print(stderr, "[{}] event weight {} \n", cp.gid(), b->pythia.info.weight());
     //if (verbose) fmt::print(stderr, "[{}] event weight {} {} {}\n", cp.gid(), LHAup->weight(), b->pythia.info.weight(), b->pythia.info.eventWeightLHEF);
-    if (verbose && iEvent < 5 ) LHAup->listEvent();
     HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
     b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
     fmt::print(stderr, "[{}] now Rivet {} \n", cp.gid());
