@@ -145,6 +145,16 @@ bool LHAupH5::setEvent(int idProc)
 
   setProcess(eHeader.pid,eHeader.weight,eHeader.scale,eHeader.aqed,eHeader.aqcd);
 
+  //nupSave    = eheader.nparticles;
+  //idprupSave = eheader.pid;
+  //xwgtupSave = eheader.weight;
+  //scalupSave = eheader.scale; // TODO which scale?
+  //aqedupSave = eheader.aqed;
+  //aqcdupSave = eheader.aqcd;
+  // Set directly!  what is scale?   
+  //getpro >> nupSave >> idprupSave >> xwgtupSave >> scalupSave
+    //>> aqedupSave >> aqcdupSave;
+
   double scalein = -1.;
   for (auto part : lheevents.mkEvent( _numberRead ) ) {
     addParticle(part.id,part.status,part.mother1,part.mother2,part.color1,part.color2,
@@ -230,7 +240,13 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   if (rank == size-1 && size>1) {
      ev_rank = nEvents-eventOffset;
   }
-  size_t nTrials(0);
+
+  // Sum of trials for this block
+  DataSet _trials     =  file.getDataSet("trials");
+  std::vector<int>    _vtrials;
+  _trials    .select({eventOffset}, {ev_rank}).read(_vtrials);
+  int nTrials = std::accumulate(_vtrials.begin(), _vtrials.end(), 0);
+
   // TODO: can't hurt to test whether this logic ^^^ is correct
 
   if (verbose) fmt::print(stderr, "[{}] reads {} events starting at {}\n", cp.gid(), ev_rank, eventOffset);
@@ -271,10 +287,12 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   if (verbose) fmt::print(stderr, "[{}] generating {} events\n", cp.gid(),  LHAup->getSize());
   for (int iEvent = 0; iEvent < LHAup->getSize(); ++iEvent) {
     if (!b->pythia.next()) {
-      if (++iAbort < nAbort) continue;
+      if (++iAbort < nAbort) continue; // TODO investigate influenec of apbort on sum trials
       break;
     }
-    if (verbose) fmt::print(stderr, "[{}] event weight {}\n", cp.gid(), LHAup->weight());
+    if (verbose) fmt::print(stderr, "[{}] event weight {} {} {}\n", cp.gid(), LHAup->weight(), b->pythia.info.weight(), b->pythia.info.eventWeightLHEF);
+    b->pythia.info.weight() * 1. / (1e9*nTrials);
+    if (verbose) fmt::print(stderr, "[{}] event weight {} {} {}\n", cp.gid(), LHAup->weight(), b->pythia.info.weight(), b->pythia.info.eventWeightLHEF);
     if (verbose && iEvent < 2 ) LHAup->listEvent();
     HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
     b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
