@@ -290,9 +290,10 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
       if (++iAbort < nAbort) continue; // TODO investigate influenec of apbort on sum trials
       break;
     }
-    if (verbose) fmt::print(stderr, "[{}] event weight before {} {} {}\n", cp.gid(), LHAup->weight(), b->pythia.info.weight(), b->pythia.info.eventWeightLHEF);
-    b->pythia.info.weight() *= 1. / (1e9*nTrials);
-    if (verbose) fmt::print(stderr, "[{}] event weight after {} {} {}\n", cp.gid(), LHAup->weight(), b->pythia.info.weight(), b->pythia.info.eventWeightLHEF);
+    if (verbose) fmt::print(stderr, "[{}] event weight {} {} {}\n", cp.gid(), LHAup->weight(), b->pythia.info.weight(), b->pythia.info.eventWeightLHEF);
+    b->pythia.info.weight() * 1. / (1e9*nTrials);
+    if (verbose) fmt::print(stderr, "[{}] event weight {} {} {}\n", cp.gid(), LHAup->weight(), b->pythia.info.weight(), b->pythia.info.eventWeightLHEF);
+    if (verbose) fmt::print(stderr, "[{}] event weight should be {}\n", cp.gid(), b->pythia.info.weight()* 1. / (1e9*nTrials));
     if (verbose && iEvent < 2 ) LHAup->listEvent();
     HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
     b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
