@@ -59,7 +59,7 @@ class LHAupH5 : public Pythia8::LHAup {
       _init        = file->getGroup("init");
       _procInfo    = file->getGroup("procInfo");
       // This reads and holds the information of readSize events, starting from firstEvent
-      //setInit();
+      setInit();
       lheevents = lheh5::readEvents(_index, _particle, _event, firstEvent, readSize);
      // Sum of trials for this block
      DataSet _trials     =  file->getDataSet("event/trials");
@@ -70,7 +70,7 @@ class LHAupH5 : public Pythia8::LHAup {
     }
   
        
-    void setScalesFromLHEF(bool b) { setScalesFromLHEF_ = b; }
+    //void setScalesFromLHEF(bool b) { setScalesFromLHEF_ = b; }
     
     // Read and set the info from init and procInfo
     bool setInit() override;// override;
@@ -90,7 +90,7 @@ class LHAupH5 : public Pythia8::LHAup {
   
 
     // Flag to set particle production scales or not.
-    bool setScalesFromLHEF_;
+    //bool setScalesFromLHEF_;
     LHAscales scalesNow;
 
 
@@ -128,7 +128,7 @@ bool LHAupH5::setInit()
    fmt::print(stderr, "numProcesses {}\n", numProcesses);
 
    // NOTE this is a hack for testing only
-   //numProcesses = 1;
+   numProcesses = 1;
 
 
    vector<int> procId;        // NOTE: C++17 allows int[numProcesses]
