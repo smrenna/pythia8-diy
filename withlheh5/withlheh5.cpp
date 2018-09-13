@@ -59,7 +59,7 @@ class LHAupH5 : public Pythia8::LHAup {
       _init        = file->getGroup("init");
       _procInfo    = file->getGroup("procInfo");
       // This reads and holds the information of readSize events, starting from firstEvent
-      setInit();
+      //setInit();
       lheevents = lheh5::readEvents(_index, _particle, _event, firstEvent, readSize);
      // Sum of trials for this block
      DataSet _trials     =  file->getDataSet("event/trials");
@@ -235,7 +235,6 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
 
   //b->pythia.readString("Print:quiet = on");
   // Tell Pythia that the we are handling the LHE information
-  b->pythia.settings.mode("Beams:frameType", 5);
 
   // Configure pythia with a vector of strings
   for (auto s  : b->state.conf) b->pythia.readString(s);
@@ -271,6 +270,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   // Give the external reader to Pythia
   b->pythia.setLHAupPtr(LHAup);
 
+  b->pythia.settings.mode("Beams:frameType", 5);
 
   // All configurations done, initialise Pythia
   b->pythia.init();
