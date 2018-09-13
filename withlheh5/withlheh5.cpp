@@ -168,6 +168,7 @@ bool LHAupH5::setEvent(int idProc)
 
   double scalein = -1.;
   for (auto part : lheevents.mkEvent( _numberRead ) ) {
+    fmt::print(stderr, "Adding particle {}\n", part);
     addParticle(part.id,part.status,part.mother1,part.mother2,part.color1,part.color2,
 		part.px,part.py,part.pz,part.e,part.m,part.lifetime,part.spin,scalein);
   }
