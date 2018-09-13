@@ -83,7 +83,7 @@ struct GenericBlock
 	  }
 
 	  std::string out("000000");
-	  std::cout << " is with magnitude of " << mag << " --> ";
+	  std::cout << dir_idx << " is with magnitude of " << mag << " --> ";
 	  if(mag >= 6) {
 		  return std::to_string(dir_idx);
 	  } else {
@@ -110,8 +110,8 @@ struct GenericBlock
 	  string dir;
 	  if(nConfigs > 1) {
 		int dim = bounds.min.size();
-		int config_idx = bounds.min[1];
-		string dir(indir +"/"+ dir_name(config_idx));
+		int config_idx = (int) bounds.min[1];
+		dir = indir +"/"+ dir_name(config_idx);
 	  } else {
 		 dir = indir; 
 	  }
@@ -132,6 +132,9 @@ struct GenericBlock
   {
 	  bool f_ok;
 
+	  if(verbose) {
+		fmt::print(stderr, "reading directory {}\n", indir);
+	  }
 	  std::vector<std::string> physConfig;
 	  physConfig.clear();
 	  f_ok = readConfig(indir+"/"+pythia_conf, physConfig,  verbose);
@@ -142,7 +145,8 @@ struct GenericBlock
 	  mg5Config.clear();
 	  bool use_mg5 = readConfig(indir+"/"+mg5_conf, mg5Config,  verbose);
 
-	  state = {1, nEvents, seed, 1, physConfig, analyses, indir+"/"+f_out, detector_conf, mg5Config, use_mg5};
+	  state = {1, nEvents, seed, 1, physConfig, analyses, indir+"/"+f_out, indir+"/"+detector_conf, mg5Config, use_mg5};
+	  if(verbose) std::cout << state << std::endl;
   }
 
 

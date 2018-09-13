@@ -25,7 +25,7 @@ typedef std::vector<PointConfig> PointConfigs;
 inline std::ostream& operator<<(std::ostream& ost, PointConfig const& pc)
 {
   ost << pc.psp_id << " " << pc.num_events << " "
-      << pc.seed << " " << pc.physics_id;
+      << pc.seed << " " << pc.physics_id << " " << pc.f_out;
   return ost;
 }
 

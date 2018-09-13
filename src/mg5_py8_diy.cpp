@@ -217,25 +217,25 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose
 
 void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int nConfigs, bool verbose)
 {
- if (verbose) fmt::print(stderr, "[{}] sees write_yoda \n", cp.gid());
-  if (cp.gid() > nConfigs - 1 ) return;
+	if (verbose) fmt::print(stderr, "[{}] sees write_yoda \n", cp.gid());
+	if (cp.gid() > nConfigs - 1 ) return;
 
-  for (auto ao : b->buffer) {
-	  if (ao->hasAnnotation("OriginalScaledBy"))
-	  {
-		  double sc = std::stod(ao->annotation("OriginalScaledBy"));
-		  if (ao->type()=="Histo1D")
-		  {
-			  dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
-		  }
-		  else if (ao->type()=="Histo2D")
-		  {
-			  dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
-		  }
-	  }
-  }
-  if (verbose) fmt::print(stderr, "[{}] -- writing to file {}  \n", cp.gid(), b->state.f_out);
-  YODA::WriterYODA::write(b->state.f_out, b->buffer);
+	for (auto ao : b->buffer) {
+		if (ao->hasAnnotation("OriginalScaledBy"))
+		{
+			double sc = std::stod(ao->annotation("OriginalScaledBy"));
+			if (ao->type()=="Histo1D")
+			{
+				dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
+			}
+			else if (ao->type()=="Histo2D")
+			{
+				dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
+			}
+		}
+	}
+	if (verbose) fmt::print(stderr, "[{}] -- writing to file {}  \n", cp.gid(), b->state.f_out);
+	YODA::WriterYODA::write(b->state.f_out, b->buffer);
 }
 
 void clear_buffer(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
@@ -288,63 +288,29 @@ int main(int argc, char* argv[])
 		return 1;
 	}
 
-	int nConfigs;
+	int nConfigs = 0;
 
-	std::vector<std::string> physConfig;
-	std::vector<std::vector<std::string> > physConfigs;
-	std::vector<std::string> out_files;
-	std::vector<std::string> detectorConfigs;
-	// MadGraph Configureations
-	std::vector<std::string> mg5Config;
-	std::vector<std::vector<std::string> > mg5Configs;
-	bool f_ok;
-	bool use_mg5 = true;
 	if( world.rank()==0 ) {
+		bool f_ok;
 		// Program logic: check whether a single parameter file has been given or
 		// a directory.
+		std::vector<std::string> physConfig;
+		physConfig.clear();
 		f_ok = readConfig(pfile, physConfig, verbose);
 		if (!f_ok) {
 			// Use glob to look for files in directory
 			for (auto f : glob(indir + "/*/" + pfile)) {
-				physConfig.clear();
-				bool this_ok = readConfig(f, physConfig, verbose);
-				if (this_ok) {
-					physConfigs.push_back(physConfig);
-					out_files.push_back(f+".yoda");
-					if(verbose) {
-						fmt::print(stderr, "detector config: {}\n", basepath(f)+dfile);
-					}
-					detectorConfigs.push_back(basepath(f)+dfile);
-				}
+				nConfigs ++;
 			}
 		}
 		else {
-			physConfigs.push_back(physConfig);
-			out_files.push_back(out_file);
-			detectorConfigs.push_back(dfile);
-		}
-		nConfigs=physConfigs.size();
-		// check if MadGraph configuration files are there
-		f_ok = readConfig(mfile, mg5Config, verbose);
-		if(!f_ok){
-			for (auto f : glob(indir + "/*/" + mfile)) {
-				mg5Config.clear();
-				bool this_ok = readConfig(f, mg5Config, verbose);
-				if(this_ok) mg5Configs.push_back(mg5Config);
-			}
-		} else {
-			mg5Configs.push_back(mg5Config);
-		}
-		if(mg5Configs.size() != physConfigs.size()){
-			fmt::print(stderr, "Configurations for MadGraph and Pythia do not match\n Not using MadGraph5");
-			mg5Configs.clear();
-			mg5Config.push_back("NONE");
-			mg5Configs.push_back(mg5Config);
-			use_mg5 = false;
+			nConfigs = 1;
 		}
 	}
 
 	MPI_Bcast(&nConfigs,   1, MPI_INT, 0, world);
+
+	fmt::print(stderr, "{} Configurations\n", nConfigs);
 
 	const int MINIMUM_NUMBER_EVENTS = 2000; // each block generates 2000 events
 	size_t num_universes = ceil(nEvents/MINIMUM_NUMBER_EVENTS);
@@ -402,7 +368,7 @@ int main(int argc, char* argv[])
 		fmt::print(stderr, "\n    Number of events/config: {}\n", nEvents);
 		fmt::print(stderr, "\n    Total number of events:  {}\n", nEvents*nConfigs);
 		fmt::print(stderr, "\n    World size:  {}\n", world.size());
-		fmt::print(stderr, "\n    MadGraph configurations:  {}\n", mg5Configs.size());
+		// fmt::print(stderr, "\n    MadGraph configurations:  {}\n", mg5Configs.size());
 		fmt::print(stderr, "***********************************\n");
 	}
 
