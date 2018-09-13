@@ -242,7 +242,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   }
 
   // Sum of trials for this block
-  DataSet _trials     =  file.getDataSet("trials");
+  DataSet _trials     =  file.getDataSet("event/trials");
   std::vector<int>    _vtrials;
   _trials    .select({eventOffset}, {ev_rank}).read(_vtrials);
   int nTrials = std::accumulate(_vtrials.begin(), _vtrials.end(), 0);
