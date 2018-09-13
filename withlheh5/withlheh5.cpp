@@ -128,7 +128,7 @@ bool LHAupH5::setInit()
    fmt::print(stderr, "numProcesses {}\n", numProcesses);
 
    // NOTE this is a hack for testing only
-   numProcesses = 1;
+   //numProcesses = 1;
 
 
    vector<int> procId;        // NOTE: C++17 allows int[numProcesses]
@@ -231,7 +231,9 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   if (verbose) b->pythia.readString("Print:quiet = off");
   else b->pythia.readString("Print:quiet = on");
 
-  b->pythia.readString("Print:quiet = on");
+  //b->pythia.readString("Print:quiet = on");
+  // Tell Pythia that the we are handling the LHE information
+  b->pythia.settings.mode("Beams:frameType", 5);
 
   // Configure pythia with a vector of strings
   for (auto s  : b->state.conf) b->pythia.readString(s);
@@ -264,8 +266,6 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   // Give the external reader to Pythia
   b->pythia.setLHAupPtr(LHAup);
 
-  // Tell Pythia that the we are handling the LHE information
-  b->pythia.settings.mode("Beams:frameType", 5);
 
   // All configurations done, initialise Pythia
   b->pythia.init();
