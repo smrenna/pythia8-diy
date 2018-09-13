@@ -263,7 +263,6 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   LHAupH5* LHAup = new LHAupH5( &file , eventOffset, ev_rank, verbose);
 
   //if (verbose) 
-     LHAup->listInit();
   //if (verbose) 
      fmt::print(stderr, "[{}] read {} events\n", cp.gid(), LHAup->getSize());
 
@@ -274,6 +273,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
 
   // All configurations done, initialise Pythia
   b->pythia.init();
+  LHAup->listInit();
 
   // Delete the AnalysisHandlerPtr to ensure there is no memory
   if (b->ah)
