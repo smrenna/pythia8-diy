@@ -59,7 +59,7 @@ class LHAupH5 : public Pythia8::LHAup {
       _init        = file->getGroup("init");
       _procInfo    = file->getGroup("procInfo");
       // This reads and holds the information of readSize events, starting from firstEvent
-      //setInit();
+      setInit();
       lheevents = lheh5::readEvents(_index, _particle, _event, firstEvent, readSize);
      // Sum of trials for this block
      DataSet _trials     =  file->getDataSet("event/trials");
