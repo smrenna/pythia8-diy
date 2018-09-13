@@ -70,7 +70,7 @@ class LHAupH5 : public Pythia8::LHAup {
     }
   
        
-    //void setScalesFromLHEF(bool b) { setScalesFromLHEF_ = b; }
+    void setScalesFromLHEF(bool b) { setScalesFromLHEF_ = b; }
     
     // Read and set the info from init and procInfo
     bool setInit() override;
@@ -90,7 +90,7 @@ class LHAupH5 : public Pythia8::LHAup {
   
 
     // Flag to set particle production scales or not.
-    //bool setScalesFromLHEF_;
+    bool setScalesFromLHEF_;
     LHAscales scalesNow;
 
 
@@ -149,14 +149,14 @@ bool LHAupH5::setEvent(int idProc)
 
   lheh5::EventHeader eHeader = lheevents.mkEventHeader( _numberRead );
 
-  //setProcess(eHeader.pid,eHeader.weight*(1. / (1e9*_nTrials)),eHeader.scale,eHeader.aqed,eHeader.aqcd);
+  setProcess(eHeader.pid,eHeader.weight*(1. / (1e9*_nTrials)),eHeader.scale,eHeader.aqed,eHeader.aqcd);
 
-  nupSave    = eHeader.nparticles;
-  idprupSave = eHeader.pid;
-  xwgtupSave = eHeader.weight*(1. / (1e9*_nTrials));
-  scalupSave = eHeader.scale; // TODO which scale?
-  aqedupSave = eHeader.aqed;
-  aqcdupSave = eHeader.aqcd;
+  //nupSave    = eHeader.nparticles;
+  //idprupSave = eHeader.pid;
+  //xwgtupSave = eHeader.weight*(1. / (1e9*_nTrials));
+  //scalupSave = eHeader.scale; // TODO which scale?
+  //aqedupSave = eHeader.aqed;
+  //aqcdupSave = eHeader.aqcd;
   // Set directly!  what is scale?   
   //getpro >> nupSave >> idprupSave >> xwgtupSave >> scalupSave
     //>> aqedupSave >> aqcdupSave;
