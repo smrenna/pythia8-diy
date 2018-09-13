@@ -190,6 +190,7 @@ bool LHAupH5::setEvent(int idProc)
   //setPdf(this->id1pdf(), this->id2pdf(), this->x1pdf(), this->x2pdf(),
          //this->scalePDF(), this->pdf1(), this->pdf2(), this->pdfIsSet());
   _numberRead++;
+  fmt::print(stderr, "numread {}\n", _numberRead);
 
 
   return true;
