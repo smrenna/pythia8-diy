@@ -75,8 +75,7 @@ struct GenericBlock
   std::string dir_name(int dir_idx)
   {
 	  int mag;
-	  if(dir_idx < 1) mag = 0;
-	  else if(dir_idx == 1) mag = 1;
+	  if(dir_idx <= 1) mag = 1;
 	  else {
 		  mag = ceil(log10(dir_idx));
 		  if(dir_idx % 10 == 0) mag += 1;
@@ -109,8 +108,15 @@ struct GenericBlock
 
 	  string dir;
 	  if(nConfigs > 1) {
-		int dim = bounds.min.size();
-		int config_idx = (int) bounds.min[1];
+		// int dim = bounds.min.size();
+		// if(dim < 2) throw(std::out_of_range("at least 2 dimensions"));
+		// int config_idx = (int) bounds.min[dim-2];
+
+		int config_idx = bounds.min[0];
+		fmt::print(stderr, "[{}] Bounds: [{} {} {}] -- [{} {} {}]\n",
+				cp.gid(),
+				bounds.min[0], bounds.min[1], bounds.min[2],
+				bounds.max[0], bounds.max[1], bounds.max[2]);
 		dir = indir +"/"+ dir_name(config_idx);
 	  } else {
 		 dir = indir; 

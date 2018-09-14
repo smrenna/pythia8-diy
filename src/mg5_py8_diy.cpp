@@ -266,6 +266,8 @@ int main(int argc, char* argv[])
 	std::string dfile="detector_config.yoda";
 	std::string indir=".";
 	std::string mfile = "mg5.cmd";
+	int dim(2); // 2-d blocks 
+
 	// get command line arguments
 	using namespace opts;
 	Options ops(argc, argv);
@@ -281,6 +283,7 @@ int main(int argc, char* argv[])
 	ops >> Option('d', "dfile",     dfile,     "detector config file for testing __or__ input file name to look for in directory.");
 	ops >> Option('m', "mfile",     mfile,     "MadGraph5 config file for testing __or__ input file name to look for in directory.");
 	ops >> Option('i', "indir",     indir,     "Input directory with hierarchical configuration files");
+	ops >> Option(       "dim",     dim,     "dimension");
 	if (ops >> Present('h', "help", "Show help"))
 	{
 		std::cout << "Usage: " << argv[0] << " [OPTIONS]\n";
@@ -319,7 +322,6 @@ int main(int argc, char* argv[])
 	// ----- starting here is a lot of standard boilerplate code for this kind of
 	//       application.
 	int mem_blocks  = -1;  // all blocks in memory, if value here then that is how many are in memory
-	int dim(3); // use 3 dimensions
 
 
 	// diy initialization
@@ -327,10 +329,11 @@ int main(int argc, char* argv[])
 
 	// set global data bounds
 	Bounds domain;
-	domain.min[0] = 0; domain.max[0] = 1; // later on can be used to identify different physics processes.
-	domain.min[1] = 0; domain.max[1] = nConfigs; // number of configurations
+	for(auto i = 0; i < dim -1; i++){
+		domain.min[i] = 0; domain.max[i] = nConfigs; // later on can be used to identify different physics processes.
+	}
 	// number of blocks used to produce the events of the same physics and configuration
-	domain.min[2] = 0; domain.max[2] = num_universes;   
+	domain.min[dim-1] = 0; domain.max[dim-1] = num_universes;   
 
 	////// choice of contiguous or round robin assigner
 	size_t tot_blocks = nConfigs*num_universes;
@@ -344,7 +347,7 @@ int main(int argc, char* argv[])
 	diy::RegularDecomposer<Bounds>::CoordinateVector    ghosts(dim);
 	// number of blocks in each dimension; 0 means no constraint; uninitialized values default to 0
 	diy::RegularDecomposer<Bounds>::DivisionsVector     divs(dim);
-	divs[2] = num_universes;                      // one universe per block in last dimension
+	divs[dim - 1] = num_universes;                      // one universe per block in last dimension
 
 	//// decompose the domain into blocks
 	diy::RegularDecomposer<Bounds> decomposer(
@@ -372,6 +375,9 @@ int main(int argc, char* argv[])
 		fmt::print(stderr, "***********************************\n");
 	}
 
+	master.foreach( [&](Block* b, const diy::Master::ProxyWithLink& cp)
+			{ b->init_data(cp, nConfigs, MINIMUM_NUMBER_EVENTS, seed, indir, pfile, analyses, out_file, dfile, mfile, verbose); });
+
 	// Let's decompose the problem
 	int k = 2;       // the radix of the k-ary reduction tree
 
@@ -380,7 +386,8 @@ int main(int argc, char* argv[])
 	// We won't actually do the merge with these partners. Instead, we'll use the divisions vector as is
 	// and will modify the kvalues vector to only merge in final dimension.
 	bool contiguous = true;
-	diy::RegularMergePartners  orig_partners(decomposer,         // domain decomposition
+	diy::RegularMergePartners  orig_partners(
+			decomposer,         // domain decomposition
 			k,                  // radix of k-ary reduction
 			contiguous);        // contiguous = true: distance doubling
 	diy::RegularMergePartners::KVSVector orig_kvs = orig_partners.kvs(); // original vector of [dim, k value] for each round
@@ -420,8 +427,6 @@ int main(int argc, char* argv[])
                                         k,           // radix of k-ary reduction
                                         true); // contiguous = true: distance doubling
 
-	master.foreach( [&](Block* b, const diy::Master::ProxyWithLink& cp)
-			{ b->init_data(cp, nConfigs, MINIMUM_NUMBER_EVENTS, seed, indir, pfile, analyses, out_file, dfile, mfile, verbose); });
 
 
 	// Broadcast the runconfig to the other blocks
