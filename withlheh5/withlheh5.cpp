@@ -167,10 +167,28 @@ bool LHAupH5::setEvent(int idProc)
     //>> aqedupSave >> aqcdupSave;
 
   double scalein = -1.;
-  for (auto part : lheevents.mkEvent( _numberRead ) ) {
-    fmt::print(stderr, "Adding particle {}\n", part);
-    addParticle(part.id,part.status,part.mother1,part.mother2,part.color1,part.color2,
-		part.px,part.py,part.pz,part.e,part.m,part.lifetime,part.spin,scalein);
+
+  // TEMPorary hack for mothers not being set in Sherpa
+  std::vector<Particle> particles = lheevents.mkEvent( _numberRead );
+
+  if (part[0].mother1 <0 && part[0].mother2 <0) {
+     for (unsigned int ip=0;ip< particles.size(); ++ip) {
+        if (ip < 2) {
+          addParticle(part.id,part.status,0, 0,part.color1,part.color2,
+                      part.px,part.py,part.pz,part.e,part.m,part.lifetime,part.spin,scalein);
+        }
+        else {
+          addParticle(part.id,part.status,1, 2,part.color1,part.color2,
+                      part.px,part.py,part.pz,part.e,part.m,part.lifetime,part.spin,scalein);
+        }
+     }
+  }
+  else {
+     for (auto part : particles ) {
+       fmt::print(stderr, "Adding particle {}\n", part);
+       addParticle(part.id,part.status,part.mother1,part.mother2,part.color1,part.color2,
+                   part.px,part.py,part.pz,part.e,part.m,part.lifetime,part.spin,scalein);
+     }
   }
     
   // Scale setting
@@ -269,10 +287,10 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   //if (verbose) 
      fmt::print(stderr, "[{}] read {} events\n", cp.gid(), LHAup->getSize());
 
+  b->pythia.settings.mode("Beams:frameType", 5);
   // Give the external reader to Pythia
   b->pythia.setLHAupPtr(LHAup);
 
-  b->pythia.settings.mode("Beams:frameType", 5);
 
   // All configurations done, initialise Pythia
   b->pythia.init();
