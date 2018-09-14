@@ -171,7 +171,7 @@ bool LHAupH5::setEvent(int idProc)
   // TEMPorary hack for mothers not being set in Sherpa
   std::vector<lheh5::Particle> particles = lheevents.mkEvent( _numberRead );
 
-  if (part[0].mother1 <0 && part[0].mother2 <0) {
+  if (particles[0].mother1 <0 && particles[0].mother2 <0) {
      for (unsigned int ip=0;ip< particles.size(); ++ip) {
         lheh5::Particle part = particles[ip];
         if (ip < 2) {
