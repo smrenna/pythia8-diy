@@ -173,6 +173,7 @@ bool LHAupH5::setEvent(int idProc)
 
   if (part[0].mother1 <0 && part[0].mother2 <0) {
      for (unsigned int ip=0;ip< particles.size(); ++ip) {
+        lheh5::Particle part = particles[ip];
         if (ip < 2) {
           addParticle(part.id,part.status,0, 0,part.color1,part.color2,
                       part.px,part.py,part.pz,part.e,part.m,part.lifetime,part.spin,scalein);
