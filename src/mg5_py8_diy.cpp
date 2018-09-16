@@ -266,7 +266,7 @@ int main(int argc, char* argv[])
 	std::string dfile="detector_config.yoda";
 	std::string indir=".";
 	std::string mfile = "mg5.cmd";
-	int dim(2); // 2-d blocks 
+	int dim(2); // 2-d blocks, 3-d do not work for now! 
 
 	// get command line arguments
 	using namespace opts;
@@ -283,7 +283,7 @@ int main(int argc, char* argv[])
 	ops >> Option('d', "dfile",     dfile,     "detector config file for testing __or__ input file name to look for in directory.");
 	ops >> Option('m', "mfile",     mfile,     "MadGraph5 config file for testing __or__ input file name to look for in directory.");
 	ops >> Option('i', "indir",     indir,     "Input directory with hierarchical configuration files");
-	ops >> Option(       "dim",     dim,     "dimension");
+	// ops >> Option(       "dim",     dim,     "dimension");
 	if (ops >> Present('h', "help", "Show help"))
 	{
 		std::cout << "Usage: " << argv[0] << " [OPTIONS]\n";

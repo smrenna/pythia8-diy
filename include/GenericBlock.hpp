@@ -78,7 +78,7 @@ struct GenericBlock
 	  if(dir_idx <= 1) mag = 1;
 	  else {
 		  mag = ceil(log10(dir_idx));
-		  if(dir_idx % 10 == 0) mag += 1;
+		  if(dir_idx/pow(10, mag) == 1) mag += 1;
 	  }
 
 	  std::string out("000000");
