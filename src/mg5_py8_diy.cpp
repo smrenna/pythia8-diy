@@ -154,6 +154,11 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose
   // TODO: we may want to feed the "ignore beams" switch as well
   for (auto a : b->state.analyses) b->ah->addAnalysis(a);
 
+  // Have to check if any analysis is there 
+  if(b->ah->analyses().empty()) {
+	  throw std::range_error::range_error("no analysis provided, I don't run");
+  }
+
 
   // Update Rivet simulation
   b->ah->setSimulationFile(b->state.detector_conf.c_str());
