@@ -110,11 +110,9 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose
 
   // Add MadGraph
   if(b->state.use_mg5) {
-	  fmt::print(stderr, "{} I am HERE\n", cp.gid());
 	  // if(b->mg5) delete b->mg5;
 	  if(!b->mg5) {
 		  try{
-			  fmt::print(stderr, "{} LHAupMadgraph WAAA\n", cp.gid());
 			  b->mg5 = new LHAupMadgraph(&(b->pythia), true, "amcatnlorun_"+cp.gid(), "mg5_aMC");
 		  } catch(const std::bad_alloc& e) {
 			  fmt::print(stderr, "{} cannot iniatiate LHAupMadgraph\n", cp.gid());
@@ -126,14 +124,12 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose
 	  try {
 		  b->pythia.setLHAupPtr(b->mg5);
 	  } catch (const std::bad_alloc& e){
-		  fmt::print(stderr, "{} HERE?", cp.gid());
+		  fmt::print(stderr, "{} cannot setup LHA MadGraph...\n", cp.gid());
 	  }
   } else {
 	  // Configure pythia with a vector of strings
 	  for (auto s  : b->state.conf) b->pythia.readString(s);
   }
-
-  fmt::print(stderr, "{} HERE 3 \n", cp.gid());
 
   // Py8 random seed for this block read from point config
   b->pythia.readString("Random:setSeed = on");
@@ -142,9 +138,9 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose
 
   // All configurations done, initialise Pythia
   // b->pythia.initPtrs(); // TODO --- is this really necessary here?
-  fmt::print(stderr, "{} HERE 3.2 \n", cp.gid());
+
   b->pythia.init();
-  fmt::print(stderr, "{} HERE 3.3 \n", cp.gid());
+
   b->pythia.settings.listChanged();
 
   // Delete the AnalysisHandlerPtr to ensure there is no memory
@@ -234,7 +230,7 @@ void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int nConfigs, bo
 			}
 		}
 	}
-	if (verbose) fmt::print(stderr, "[{}] -- writing to file {}  \n", cp.gid(), b->state.f_out);
+	fmt::print(stderr, "[{}] -- writing to file {}  \n", cp.gid(), b->state.f_out);
 	YODA::WriterYODA::write(b->state.f_out, b->buffer);
 }
 
@@ -260,6 +256,7 @@ int main(int argc, char* argv[])
 	int threads = 1;
 	int nEvents=1000;
 	size_t seed=1234;
+	int evts_per_block_in = -1;
 	vector<std::string> analyses;
 	std::string out_file="diy.yoda";
 	std::string pfile="runPythia.cmd";
@@ -283,6 +280,7 @@ int main(int argc, char* argv[])
 	ops >> Option('d', "dfile",     dfile,     "detector config file for testing __or__ input file name to look for in directory.");
 	ops >> Option('m', "mfile",     mfile,     "MadGraph5 config file for testing __or__ input file name to look for in directory.");
 	ops >> Option('i', "indir",     indir,     "Input directory with hierarchical configuration files");
+	ops >> Option(     "evtsPerBlock",     evts_per_block_in,     "Events per block");
 	// ops >> Option(       "dim",     dim,     "dimension");
 	if (ops >> Present('h', "help", "Show help"))
 	{
@@ -313,10 +311,11 @@ int main(int argc, char* argv[])
 
 	MPI_Bcast(&nConfigs,   1, MPI_INT, 0, world);
 
-	fmt::print(stderr, "{} Configurations\n", nConfigs);
+	const int MINIMUM_NUMBER_EVENTS = 2000; // each block at least generates 2000 events
+	int evts_per_block = (evts_per_block_in > MINIMUM_NUMBER_EVENTS)? evts_per_block_in: MINIMUM_NUMBER_EVENTS;
+	size_t num_universes = ceil(nEvents/evts_per_block);
+	num_universes = num_universes < 1?1:num_universes;
 
-	const int MINIMUM_NUMBER_EVENTS = 2000; // each block generates 2000 events
-	size_t num_universes = ceil(nEvents/MINIMUM_NUMBER_EVENTS);
 
 
 	// ----- starting here is a lot of standard boilerplate code for this kind of
@@ -338,6 +337,23 @@ int main(int argc, char* argv[])
 	////// choice of contiguous or round robin assigner
 	size_t tot_blocks = nConfigs*num_universes;
 	diy::ContiguousAssigner   assigner(world.size(), tot_blocks);
+
+	if( world.rank()==0 ) {
+		fmt::print(stderr, "\n*** This is diy running Pythia8 ***\n");
+		fmt::print(stderr, "\n    Universes:               {}\n", num_universes);
+		fmt::print(stderr, "\n    Physics configurations:  {}\n", nConfigs);
+		fmt::print(stderr, "\n    Number of events: {}\n", nEvents);
+		fmt::print(stderr, "\n    Total number of events:  {}\n", nEvents*nConfigs);
+		fmt::print(stderr, "\n    World size:  {}\n", world.size());
+		fmt::print(stderr, "\n    Events Per Bloack:  {}\n", evts_per_block);
+		fmt::print(stderr, "\n    Total blocks:  {}\n", tot_blocks);
+		for (auto s : analyses) {
+			fmt::print(stderr, "\n	Analyses: {} \n", s);
+		}
+
+		// fmt::print(stderr, "\n    MadGraph configurations:  {}\n", mg5Configs.size());
+		fmt::print(stderr, "***********************************\n");
+	}
 
 	// whether faces are shared in each dimension; uninitialized values default to false
 	diy::RegularDecomposer<Bounds>::BoolVector          share_face(dim);
@@ -364,19 +380,9 @@ int main(int argc, char* argv[])
 	AddBlock create(master);
 	decomposer.decompose(world.rank(), assigner, create); // Note: only decompose once!
 
-	if( world.rank()==0 ) {
-		fmt::print(stderr, "\n*** This is diy running Pythia8 ***\n");
-		fmt::print(stderr, "\n    Universes:               {}\n", num_universes);
-		fmt::print(stderr, "\n    Physics configurations:  {}\n", nConfigs);
-		fmt::print(stderr, "\n    Number of events/config: {}\n", nEvents);
-		fmt::print(stderr, "\n    Total number of events:  {}\n", nEvents*nConfigs);
-		fmt::print(stderr, "\n    World size:  {}\n", world.size());
-		// fmt::print(stderr, "\n    MadGraph configurations:  {}\n", mg5Configs.size());
-		fmt::print(stderr, "***********************************\n");
-	}
 
 	master.foreach( [&](Block* b, const diy::Master::ProxyWithLink& cp)
-			{ b->init_data(cp, nConfigs, MINIMUM_NUMBER_EVENTS, seed, indir, pfile, analyses, out_file, dfile, mfile, verbose); });
+			{ b->init_data(cp, nConfigs, evts_per_block, seed, indir, pfile, analyses, out_file, dfile, mfile, verbose); });
 
 	// Let's decompose the problem
 	int k = 2;       // the radix of the k-ary reduction tree
