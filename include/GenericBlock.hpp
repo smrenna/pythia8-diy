@@ -91,7 +91,8 @@ struct GenericBlock
   }
 
 
-  void init_data(const diy::Master::ProxyWithLink& cp,
+  void init_data(
+		  const diy::Master::ProxyWithLink& cp,
 		  int nConfigs,
 		  int nEvents,
 		  int seed,
@@ -154,6 +155,8 @@ struct GenericBlock
 	  state = {1, nEvents, seed, 1, physConfig, analyses, indir+"/"+f_out, indir+"/"+detector_conf, mg5Config, use_mg5};
 	  if(verbose) std::cout << state << std::endl;
   }
+
+  
 
 
   // -----------

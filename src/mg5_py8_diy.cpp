@@ -386,6 +386,7 @@ int main(int argc, char* argv[])
 	decomposer.decompose(world.rank(), assigner, create); // Note: only decompose once!
 
 
+	// setup configurations for each scan
 	master.foreach( [&](Block* b, const diy::Master::ProxyWithLink& cp)
 			{ b->init_data(cp, nConfigs, evts_per_block, seed, indir, pfile, analyses, out_file, dfile, mfile, verbose); });
 
