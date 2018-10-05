@@ -157,6 +157,26 @@ struct GenericBlock
   }
 
   
+  void gen_mg5_gridpack(
+		  const diy::Master::ProxyWithLink& cp,
+		  int nConfigs,
+		  bool verbose
+		  ) 
+  {
+	  if(cp.gid() > nConfigs - 1) return;
+	  if(! state.use_mg5) return;
+
+	  // create gridpack for each configuration!
+	  if(!mg5) {
+		  mg5 = new LHAupMadgraph(&pythia, true, basepath(state.f_out)+"/amcatnlorun", "mg5_aMC");
+	  }
+
+	  //grid pack is already implemented in LHAMadgraph.h@function of launch() l356.
+	  for(auto s: state.mg5_conf) mg5->readString(s);
+	  mg5->setInit();
+	  
+	  return;
+  }
 
 
   // -----------

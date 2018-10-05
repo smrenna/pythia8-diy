@@ -76,21 +76,6 @@ void print_block(Block* b,                             // local block
    fmt::print(stderr, "\n");
 }
 
-struct MatchPathSeparator
-{
-	bool operator()( char ch ) const
-	{
-		return ch == '/';
-	}
-};
-
-std::string basepath(const std::string& pathname){
-	return std::string(
-			pathname.begin(),
-			std::find_if(pathname.rbegin(), pathname.rend(), MatchPathSeparator()).base()
-			);
-}
-
 
 //void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> physConfig, std::vector<std::string> analyses, bool verbose)
 void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank,  bool verbose, int npc)

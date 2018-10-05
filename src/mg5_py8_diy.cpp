@@ -81,21 +81,6 @@ void print_block(Block* b,                             // local block
    fmt::print(stderr, "\n");
 }
 
-struct MatchPathSeparator
-{
-	bool operator()( char ch ) const
-	{
-		return ch == '/';
-	}
-};
-
-std::string basepath(const std::string& pathname){
-	return std::string(
-			pathname.begin(),
-			std::find_if(pathname.rbegin(), pathname.rend(), MatchPathSeparator()).base()
-			);
-}
-
 
 void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose)
 {
@@ -389,6 +374,10 @@ int main(int argc, char* argv[])
 	// setup configurations for each scan
 	master.foreach( [&](Block* b, const diy::Master::ProxyWithLink& cp)
 			{ b->init_data(cp, nConfigs, evts_per_block, seed, indir, pfile, analyses, out_file, dfile, mfile, verbose); });
+
+	// run MadGraph to generate gridpack
+	master.foreach( [&](Block* b, const diy::Master::ProxyWithLink& cp)
+			{ b->gen_mg5_gridpack(cp, nConfigs, verbose); });
 
 	// Let's decompose the problem
 	int k = 2;       // the radix of the k-ary reduction tree
