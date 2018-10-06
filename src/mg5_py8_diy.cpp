@@ -93,19 +93,25 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose
   if (verbose) b->pythia.readString("Print:quiet = off");
   else b->pythia.readString("Print:quiet = on");
 
-  // Add MadGraph
+
   if(b->state.use_mg5) {
+	  // Add MadGraph
 	  // if(b->mg5) delete b->mg5;
 	  if(!b->mg5) {
 		  try{
-			  b->mg5 = new LHAupMadgraph(&(b->pythia), true, "amcatnlorun_"+cp.gid(), "mg5_aMC");
+			  b->mg5 = new LHAupMadgraph(&(b->pythia), true, basepath(b->state.f_out)+"/amcatnlorun", "mg5_aMC");
 		  } catch(const std::bad_alloc& e) {
 			  fmt::print(stderr, "{} cannot iniatiate LHAupMadgraph\n", cp.gid());
+			  return;
 		  }
+		  for(auto s: b->state.mg5_conf) b->mg5->readString(s);
+		  // setup seed and number of events....
+		  b->mg5->readString(" set nevents " + std::to_string(b->state.num_events));
+		  b->mg5->readString(" set iseed " + std::to_string(b->state.seed+cp.gid()));
 	  } else {
+		  // If this is already, assuming configruations and such are already read...
 		  fmt::print(stderr, "{} LHAupMadgraph already there!\n", cp.gid());
 	  }
-	  for(auto s: b->state.mg5_conf) b->mg5->readString(s);
 	  try {
 		  b->pythia.setLHAupPtr(b->mg5);
 	  } catch (const std::bad_alloc& e){
@@ -114,12 +120,13 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose
   } else {
 	  // Configure pythia with a vector of strings
 	  for (auto s  : b->state.conf) b->pythia.readString(s);
+
+	  // Py8 random seed for this block read from point config
+	  b->pythia.readString("Random:setSeed = on");
+	  b->pythia.readString("Random:seed = " + std::to_string(b->state.seed+cp.gid()));
+	  b->pythia.readString("Main:numberOfEvents = " + std::to_string(b->state.num_events));
   }
 
-  // Py8 random seed for this block read from point config
-  b->pythia.readString("Random:setSeed = on");
-  b->pythia.readString("Random:seed = " + std::to_string(b->state.seed+cp.gid()));
-  b->pythia.readString("Main:numberOfEvents = " + std::to_string(b->state.num_events));
 
   // All configurations done, initialise Pythia
   // b->pythia.initPtrs(); // TODO --- is this really necessary here?
@@ -302,7 +309,7 @@ int main(int argc, char* argv[])
 	MPI_Bcast(&nConfigs,   1, MPI_INT, 0, world);
 
 	const int MINIMUM_NUMBER_EVENTS = 2000; // each block at least generates 2000 events
-	int evts_per_block = (evts_per_block_in > MINIMUM_NUMBER_EVENTS)? evts_per_block_in: MINIMUM_NUMBER_EVENTS;
+	int evts_per_block = (evts_per_block_in > 1)? evts_per_block_in: MINIMUM_NUMBER_EVENTS;
 	size_t num_universes = ceil(nEvents/evts_per_block);
 	num_universes = num_universes < 1?1:num_universes;
 

@@ -174,6 +174,8 @@ struct GenericBlock
 	  //grid pack is already implemented in LHAMadgraph.h@function of launch() l356.
 	  for(auto s: state.mg5_conf) mg5->readString(s);
 	  mg5->setInit();
+
+	  fmt::print(stderr, "[{}] MG5 Finished Init", cp.gid());
 	  
 	  return;
   }
