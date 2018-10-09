@@ -56,9 +56,7 @@ typedef GenericBlock<Bounds, PointConfig, AnalysisObjects> Block;
 typedef ConfigBlockAdder<Bounds, RCLink, Block> AddBlock;
 
 
-void print_block(Block* b,                             // local block
-                 const diy::Master::ProxyWithLink& cp, // communication proxy
-                 bool verbose)                         // user-defined additional arguments
+void print_block(Block* b, const diy::Master::ProxyWithLink& cp)
 {
    for (auto s : b->state.conf) {
       fmt::print(stderr, "[{}]: {}\n", cp.gid(), s);
@@ -71,8 +69,7 @@ void print_block(Block* b,                             // local block
 }
 
 
-//void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> physConfig, std::vector<std::string> analyses, bool verbose)
-void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank,  bool verbose, int npc)
+void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
 {
   // This make rivet only report ERRORs
   // TODO: can we have a global flag to steer verbosity of all moving parts?
@@ -108,7 +105,7 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank,  bo
   int nAbort = 5;
   int iAbort = 0;
   if (verbose) fmt::print(stderr, "[{}] generating {} events\n", cp.gid(),  b->state.num_events);
-  for (int iEvent = 0; iEvent < b->state.num_events; ++iEvent) {
+  for (unsigned int iEvent = 0; iEvent < b->state.num_events; ++iEvent) {
     if (!b->pythia.next()) {
       if (++iAbort < nAbort) continue;
       break;
@@ -144,12 +141,12 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank,  bo
       if (ao->type()=="Histo1D")
       {
          dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
-         dynamic_cast<YODA::Histo1D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+         //dynamic_cast<YODA::Histo1D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
       }
       else if (ao->type()=="Histo2D")
       {
          dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
-         dynamic_cast<YODA::Histo2D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+         //dynamic_cast<YODA::Histo2D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
       }
     }
   }
@@ -161,9 +158,11 @@ void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int rank, bool v
  if (verbose) fmt::print(stderr, "[{}] -- rank {} sees write_yoda \n", cp.gid(), rank);
   if (rank==0 && cp.gid()==0) {
     for (auto ao : b->buffer) {
-      if (ao->hasAnnotation("OriginalScaledBy"))
+      //if (ao->hasAnnotation("OriginalScaledBy"))
+      if (ao->hasAnnotation("ScaledBy"))
       {
-        double sc = std::stod(ao->annotation("OriginalScaledBy"));
+        double sc = std::stod(ao->annotation("ScaledBy"));
+        //double sc = std::stod(ao->annotation("OriginalScaledBy"));
         if (ao->type()=="Histo1D")
         {
            dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
@@ -309,7 +308,7 @@ int main(int argc, char* argv[])
     }
 
     PointConfig pc;
-    for (size_t ipc=0;ipc<nConfigs;++ipc) {
+    for (int ipc=0;ipc<nConfigs;++ipc) {
        if (world.rank()==0) {
           pc = mkRunConfig(blocks, nEvents, seed, physConfigs[ipc], analyses, out_files[ipc]);
        }
@@ -322,10 +321,10 @@ int main(int argc, char* argv[])
        diy::reduce(master, assigner, comm, &bc_pointconfig<Block>);
 
        if (verbose) master.foreach([world](Block* b, const diy::Master::ProxyWithLink& cp)
-                        {print_block(b, cp, world.rank()); });
+                        {print_block(b, cp); });
 
        master.foreach([world, verbose, ipc](Block* b, const diy::Master::ProxyWithLink& cp)
-                        {process_block(b, cp, world.rank(), verbose, ipc); });
+                        {process_block(b, cp, verbose); });
 
 
        diy::reduce(master,              // Master object
