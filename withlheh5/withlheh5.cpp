@@ -62,7 +62,7 @@ class LHAupH5 : public Pythia8::LHAup {
       setInit();
       lheevents = lheh5::readEvents(_index, _particle, _event, firstEvent, readSize);
      // Sum of trials for this block
-     DataSet _trials     =  file->getDataSet("event/trials");
+     DataSet _trials     =  _event.getDataSet("trials");
      std::vector<int>    _vtrials;
      _trials    .select({firstEvent}, {readSize}).read(_vtrials);
      _nTrials = std::accumulate(_vtrials.begin(), _vtrials.end(), 0);
@@ -125,7 +125,6 @@ bool LHAupH5::setInit()
    
    int numProcesses;
    _init.getDataSet("numProcesses").read(numProcesses);
-   fmt::print(stderr, "numProcesses {}\n", numProcesses);
 
    // NOTE this is a hack for testing only
    numProcesses = 1;
@@ -171,24 +170,15 @@ bool LHAupH5::setEvent(int idProc)
   // TEMPorary hack for mothers not being set in Sherpa
   std::vector<lheh5::Particle> particles = lheevents.mkEvent( _numberRead );
 
-  if (particles[0].mother1 <0 && particles[0].mother2 <0) {
-     for (unsigned int ip=0;ip< particles.size(); ++ip) {
-        lheh5::Particle part = particles[ip];
-        if (ip < 2) {
-          addParticle(part.id,part.status,0, 0,part.color1,part.color2,
-                      part.px,part.py,part.pz,part.e,part.m,part.lifetime,part.spin,scalein);
-        }
-        else {
-          addParticle(part.id,part.status,1, 2,part.color1,part.color2,
-                      part.px,part.py,part.pz,part.e,part.m,part.lifetime,part.spin,scalein);
-        }
-     }
-  }
-  else {
-     for (auto part : particles ) {
-       fmt::print(stderr, "Adding particle {}\n", part);
-       addParticle(part.id,part.status,part.mother1,part.mother2,part.color1,part.color2,
+  for (unsigned int ip=0;ip< particles.size(); ++ip) {
+     lheh5::Particle part = particles[ip];
+     if (ip < 2) {
+       addParticle(part.id,part.status,0, 0,part.color1,part.color2,
                    part.px,part.py,part.pz,part.e,part.m,part.lifetime,part.spin,scalein);
+     }
+     else {
+    addParticle(part.id,1,part.mother1,part.mother2,part.color1,part.color2,
+                part.px,part.py,part.pz,part.e,part.m,part.lifetime,part.spin,scalein);
      }
   }
     
@@ -200,9 +190,6 @@ bool LHAupH5::setEvent(int idProc)
 
   infoPtr->scales = &scalesNow;
 
-  fmt::print(stderr, "numread {}\n", _numberRead);
-  listEvent();
-  listInit();
 
   // Trials --- TODO ask Stefan again
   //infoPtr->setLHEF3EventInfo( &reader.hepeup.attributes, 0, 0, 0, 0, 0,
@@ -212,7 +199,6 @@ bool LHAupH5::setEvent(int idProc)
   //setPdf(this->id1pdf(), this->id2pdf(), this->x1pdf(), this->x2pdf(),
          //this->scalePDF(), this->pdf1(), this->pdf2(), this->pdfIsSet());
   _numberRead++;
-  fmt::print(stderr, "numread {}\n", _numberRead);
 
 
   return true;
@@ -279,14 +265,10 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
 
   // TODO: can't hurt to test whether this logic ^^^ is correct
 
-  //if (verbose) 
+  if (verbose) 
      fmt::print(stderr, "[{}] reads {} events starting at {}\n", cp.gid(), ev_rank, eventOffset);
   // Create an LHAup object that can access relevant information in pythia.
   LHAupH5* LHAup = new LHAupH5( &file , eventOffset, ev_rank, verbose);
-
-  //if (verbose) 
-  //if (verbose) 
-     fmt::print(stderr, "[{}] read {} events\n", cp.gid(), LHAup->getSize());
 
   b->pythia.settings.mode("Beams:frameType", 5);
   // Give the external reader to Pythia
@@ -315,19 +297,18 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   // The event loop
   int nAbort = 5;
   int iAbort = 0;
-  //if (verbose) 
+  if (verbose) 
      fmt::print(stderr, "[{}] generating {} events\n", cp.gid(),  LHAup->getSize());
   for (int iEvent = 0; iEvent < LHAup->getSize(); ++iEvent) {
     if (!b->pythia.next()) {
       if (++iAbort < nAbort) continue; // TODO investigate influenec of apbort on sum trials
       break;
     }
-    if (verbose && iEvent < 5 ) LHAup->listEvent();
+    if (verbose && iEvent < 2 ) LHAup->listEvent();
     if (verbose) fmt::print(stderr, "[{}] event weight {} \n", cp.gid(), b->pythia.info.weight());
     //if (verbose) fmt::print(stderr, "[{}] event weight {} {} {}\n", cp.gid(), LHAup->weight(), b->pythia.info.weight(), b->pythia.info.eventWeightLHEF);
     HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
     b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
-    fmt::print(stderr, "[{}] now Rivet {} \n", cp.gid());
 
     // Here more
     try {b->ah->analyze( *hepmcevt ) ;} catch (const std::exception& e)
