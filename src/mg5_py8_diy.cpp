@@ -8,6 +8,8 @@
 #include <stdexcept>
 #include <random>
 #include <typeinfo>
+#include <ctime>
+#include <iomanip> // put_time
 
 #include <diy/master.hpp>
 #include <diy/reduce.hpp>
@@ -38,6 +40,9 @@
 #include "Rivet/AnalysisHandler.hh"
 #undef foreach // This line prevents a clash of definitions of rivet's legacy foreach with that of DIY
 
+
+#include <chrono> // to time running time, since c++11
+
 #include "HepMC/IO_GenEvent.h"
 
 
@@ -58,153 +63,170 @@ typedef ConfigBlockAdder<Bounds, RCLink, Block> AddBlock;
 
 
 void print_block(Block* b,                             // local block
-                 const diy::Master::ProxyWithLink& cp, // communication proxy
-                 bool verbose)                         // user-defined additional arguments
+		const diy::Master::ProxyWithLink& cp, // communication proxy
+		bool verbose)                         // user-defined additional arguments
 {
-	fmt::print(stderr, "Pythia configuration\n");
-   for (auto s : b->state.conf) {
-      fmt::print(stderr, "\t[{}]: {}\n", cp.gid(), s);
-   }
-   fmt::print(stderr, "\n");
-   fmt::print(stderr, "Rivet analyses:\n");
-   for (auto s : b->state.analyses) {
-      fmt::print(stderr, "\t[{}]: {} ", cp.gid(), s);
-   }
-   fmt::print(stderr, "\ndetector configuration:");
-   fmt::print(stderr, "\t[{}]: {}\n", cp.gid(), b->state.detector_conf);
-   fmt::print(stderr, "output:");
-   fmt::print(stderr, "\t[{}]: {}\n", cp.gid(), b->state.f_out);
-   fmt::print(stderr, "MadGraph5:\n");
-   for (auto s : b->state.mg5_conf) {
-      fmt::print(stderr, "\t[{}]: {}\n", cp.gid(), s);
-   }
-   fmt::print(stderr, "\n");
+	fmt::print(stderr, "\n[{}] Pythia configuration\n", cp.gid());
+	for (auto s : b->state.conf) {
+		fmt::print(stderr, "\t[{}]: {}\n", cp.gid(), s);
+	}
+	fmt::print(stderr, "\n[{}] Rivet analyses:\n", cp.gid());
+	for (auto s : b->state.analyses) {
+		fmt::print(stderr, "\t[{}]: {} ", cp.gid(), s);
+	}
+	fmt::print(stderr, "[{}] detector configuration: {}\n", cp.gid(), b->state.detector_conf);
+	fmt::print(stderr, "[{}] output: {}\n", cp.gid(), b->state.f_out);
+	if(b->state.use_mg5){
+		fmt::print(stderr, "MadGraph5:\n");
+		for (auto s : b->state.mg5_conf) {
+			fmt::print(stderr, "\t[{}]: {}\n", cp.gid(), s);
+		}
+	} else {
+		fmt::print(stderr, "[{}] MadGraph5 not Used\n", cp.gid());
+	}
+	fmt::print(stderr, "\n");
 }
 
 
 void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose)
 {
-	fmt::print(stderr, "{} Start to process\n", cp.gid());
-  // This make rivet only report ERRORs
-  // TODO: can we have a global flag to steer verbosity of all moving parts?
-  if (!verbose) Rivet::Log::setLevel("Rivet", Rivet::Log::ERROR);
+	auto start = std::chrono::system_clock::now();
+	std::time_t tttt = std::time(nullptr);
 
-  // Minimise pythia's output
-  if (verbose) b->pythia.readString("Print:quiet = off");
-  else b->pythia.readString("Print:quiet = on");
+	fmt::print(stderr, "[{}] Start to process {} \n", cp.gid(), 
+			std::put_time(std::localtime(&tttt), "%c %Z") );
+	// This make rivet only report ERRORs
+	// TODO: can we have a global flag to steer verbosity of all moving parts?
+	if (!verbose) Rivet::Log::setLevel("Rivet", Rivet::Log::ERROR);
 
-
-  if(b->state.use_mg5) {
-	  // Add MadGraph
-	  // if(b->mg5) delete b->mg5;
-	  if(!b->mg5) {
-		  try{
-			  b->mg5 = new LHAupMadgraph(&(b->pythia), true, basepath(b->state.f_out)+"/amcatnlorun", "mg5_aMC");
-		  } catch(const std::bad_alloc& e) {
-			  fmt::print(stderr, "{} cannot iniatiate LHAupMadgraph\n", cp.gid());
-			  return;
-		  }
-		  for(auto s: b->state.mg5_conf) b->mg5->readString(s);
-		  // setup seed and number of events....
-		  b->mg5->readString(" set nevents " + std::to_string(b->state.num_events));
-		  b->mg5->readString(" set iseed " + std::to_string(b->state.seed+cp.gid()));
-	  } else {
-		  // If this is already, assuming configruations and such are already read...
-		  fmt::print(stderr, "{} LHAupMadgraph already there!\n", cp.gid());
-	  }
-	  try {
-		  b->pythia.setLHAupPtr(b->mg5);
-	  } catch (const std::bad_alloc& e){
-		  fmt::print(stderr, "{} cannot setup LHA MadGraph...\n", cp.gid());
-	  }
-  } else {
-	  // Configure pythia with a vector of strings
-	  for (auto s  : b->state.conf) b->pythia.readString(s);
-
-	  // Py8 random seed for this block read from point config
-	  b->pythia.readString("Random:setSeed = on");
-	  b->pythia.readString("Random:seed = " + std::to_string(b->state.seed+cp.gid()));
-	  b->pythia.readString("Main:numberOfEvents = " + std::to_string(b->state.num_events));
-  }
+	// Minimise pythia's output
+	b->pythia.readString("Print:quiet = on");
+	/**
+	if (verbose) b->pythia.readString("Print:quiet = off");
+	else b->pythia.readString("Print:quiet = on");
+	***/
 
 
-  // All configurations done, initialise Pythia
-  // b->pythia.initPtrs(); // TODO --- is this really necessary here?
 
-  b->pythia.init();
+	if(b->state.use_mg5) {
+		// Add MadGraph
+		if(!b->mg5) {
+			try{
+				b->mg5 = new LHAupMadgraph(&(b->pythia), true, basepath(b->state.f_out)+"/amcatnlorun", "mg5_aMC");
+			} catch(const std::bad_alloc& e) {
+				fmt::print(stderr, "{} cannot iniatiate LHAupMadgraph\n", cp.gid());
+				return;
+			}
+			for(auto s: b->state.mg5_conf) b->mg5->readString(s);
+			// setup seed and number of events....
+			b->mg5->readString(" set nevents " + std::to_string(b->state.num_events));
+			b->mg5->readString(" set iseed " + std::to_string(b->state.seed+cp.gid()));
+		} else {
+			// If this is already, assuming configruations and such are already read...
+			fmt::print(stderr, "{} LHAupMadgraph already there!\n", cp.gid());
+		}
+		try {
+			b->pythia.setLHAupPtr(b->mg5);
+		} catch (const std::bad_alloc& e){
+			fmt::print(stderr, "{} cannot setup LHA MadGraph...\n", cp.gid());
+		}
+	} else {
+		// Configure pythia with a vector of strings
+		for (auto s  : b->state.conf) b->pythia.readString(s);
 
-  b->pythia.settings.listChanged();
-
-  // Delete the AnalysisHandlerPtr to ensure there is no memory
-  if (b->ah)
-  {
-    delete b->ah;
-  }
-  b->ah = new Rivet::AnalysisHandler;
-
-  // Add all anlyses to rivet
-  // TODO: we may want to feed the "ignore beams" switch as well
-  for (auto a : b->state.analyses) b->ah->addAnalysis(a);
-
-  // Have to check if any analysis is there 
-  if(b->ah->analyses().empty()) {
-	  throw std::range_error::range_error("no analysis provided, I don't run");
-  }
-
-
-  // Update Rivet simulation
-  b->ah->setSimulationFile(b->state.detector_conf.c_str());
-
-  // The event loop
-  int nAbort = b->pythia.mode("Main:timesAllowErrors");
-  int iAbort = 0;
-  if (verbose) fmt::print(stderr, "[{}] generating {} events\n", cp.gid(),  b->state.num_events);
-  for (int iEvent = 0; iEvent < b->state.num_events; ++iEvent) {
-    if (!b->pythia.next()) {
-      if (++iAbort < nAbort) continue;
-      break;
-    }
-    HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
-    b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
-
-    try {b->ah->analyze( *hepmcevt ) ;} catch (const std::exception& e)
-    {
-      if (verbose) fmt::print(stderr, "[{}] exception in analyze: {}\n", cp.gid(), e.what());
-    }
-    delete hepmcevt;
-    if (iEvent%1000 == 0 && cp.gid()==0) fmt::print(stderr, "[{}]  {}/{} \n", cp.gid(),  iEvent, b->state.num_events);;
-  }
-  if (verbose) fmt::print(stderr, "[{}] finished generating {} events\n", cp.gid(),  b->state.num_events);
-
-  // Event loop is done, set xsection correctly and normalise histos
-  b->ah->setCrossSection(b->pythia.info.sigmaGen() * 1.0E9);
-  b->ah->finalize();
-
-  // Push histos into block
-  b->data = b->ah->getData();
-
-  // Debug write out --- uncomment to write each block's YODA file
-  //b->ah->writeData(std::to_string((1+npc)*(b->state.seed+cp.gid()))+".yoda");
+		// Py8 random seed for this block read from point config
+		b->pythia.readString("Random:setSeed = on");
+		b->pythia.readString("Random:seed = " + std::to_string(b->state.seed+cp.gid()));
+		b->pythia.readString("Main:numberOfEvents = " + std::to_string(b->state.num_events));
+	}
 
 
-  // This is a bit annoying --- we need to unscale Histo1D and Histo2D beforge the reduction
-  // TODO: Figure out whether this is really necessary
-  for (auto ao : b->data) {
-    if (ao->hasAnnotation("ScaledBy"))
-    {
-      double sc = std::stod(ao->annotation("ScaledBy"));
-      if (ao->type()=="Histo1D")
-      {
-         dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
-         dynamic_cast<YODA::Histo1D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
-      }
-      else if (ao->type()=="Histo2D")
-      {
-         dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
-         dynamic_cast<YODA::Histo2D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
-      }
-    }
-  }
+	// All configurations done, initialise Pythia
+	// b->pythia.initPtrs(); // TODO --- is this really necessary here?
+
+	b->pythia.init();
+
+	// b->pythia.settings.listChanged();
+
+	// Delete the AnalysisHandlerPtr to ensure there is no memory
+	if (b->ah)
+	{
+		delete b->ah;
+	}
+	b->ah = new Rivet::AnalysisHandler;
+
+	// Add all anlyses to rivet
+	// TODO: we may want to feed the "ignore beams" switch as well
+	for (auto a : b->state.analyses) b->ah->addAnalysis(a);
+
+	// Terminate the program if analysis is not available
+	if(b->ah->analyses().empty()) {
+		throw std::range_error::range_error("no analysis provided, I don't run!");
+	}
+
+
+	// Update Rivet simulation
+	b->ah->setSimulationFile(b->state.detector_conf.c_str());
+
+	// The event loop
+	// int nAbort = b->pythia.mode("Main:timesAllowErrors");
+	int nAbort = (int) b->state.num_events * 0.005; // 0.005 is a random fraction
+	nAbort = nAbort > 10? nAbort: 10;
+
+	int iAbort = 0;
+	if (verbose) fmt::print(stderr, "[{}] generating {} events\n", cp.gid(),  b->state.num_events);
+	int iEvent = 0;
+	while (iEvent < b->state.num_events) {
+		if (!b->pythia.next()) {
+			if (++iAbort < nAbort) continue;
+			break;
+		}
+		HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
+		b->ToHepMC.fill_next_event( b->pythia, hepmcevt);
+
+		try {b->ah->analyze( *hepmcevt ) ;} catch (const std::exception& e)
+		{
+			if (verbose) fmt::print(stderr, "[{}] exception in analyze: {}\n", cp.gid(), e.what());
+		}
+		delete hepmcevt;
+		if (iEvent%1000 == 0) fmt::print(stderr, "[{}]  {}/{} \n", cp.gid(),  iEvent, b->state.num_events);;
+		iEvent ++;
+	}
+	if (verbose) fmt::print(stderr, "[{}] finished generating {} events\n", cp.gid(),  b->state.num_events);
+
+	// Event loop is done, set xsection correctly and normalise histos
+	b->ah->setCrossSection(b->pythia.info.sigmaGen() * 1.0E9);
+	b->ah->finalize();
+
+	// Push histos into block
+	b->data = b->ah->getData();
+
+	// Debug write out --- uncomment to write each block's YODA file
+	//b->ah->writeData(std::to_string((1+npc)*(b->state.seed+cp.gid()))+".yoda");
+
+
+	// This is a bit annoying --- we need to unscale Histo1D and Histo2D beforge the reduction
+	// TODO: Figure out whether this is really necessary
+	for (auto ao : b->data) {
+		if (ao->hasAnnotation("ScaledBy"))
+		{
+			double sc = std::stod(ao->annotation("ScaledBy"));
+			if (ao->type()=="Histo1D")
+			{
+				dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
+				dynamic_cast<YODA::Histo1D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+			}
+			else if (ao->type()=="Histo2D")
+			{
+				dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
+				dynamic_cast<YODA::Histo2D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+			}
+		}
+	}
+
+	auto end = std::chrono::system_clock::now();
+	std::chrono::duration<double> diff = end - start;
+	fmt::print(stderr, "[{}] Finishes processing, Takes {} minutes\n", cp.gid(), diff.count()/60);
 }
 
 
@@ -247,6 +269,8 @@ void set_pc(Block* b,                             // local block
 // --- main program ---//
 int main(int argc, char* argv[])
 {
+	// fmt::print(stderr, "{} STARTED\n", argv[0]);
+	auto start = std::chrono::system_clock::now();
 	diy::mpi::environment env(argc, argv);
 	diy::mpi::communicator world;
 
@@ -336,7 +360,9 @@ int main(int argc, char* argv[])
 	diy::ContiguousAssigner   assigner(world.size(), tot_blocks);
 
 	if( world.rank()==0 ) {
+		std::time_t tttt = std::time(nullptr);
 		fmt::print(stderr, "\n*** This is diy running Pythia8 ***\n");
+		fmt::print(stderr, "\n    Local Time:              {}n", std::put_time(std::localtime(&tttt), "%c %Z"));
 		fmt::print(stderr, "\n    Universes:               {}\n", num_universes);
 		fmt::print(stderr, "\n    Physics configurations:  {}\n", nConfigs);
 		fmt::print(stderr, "\n    Number of events: {}\n", nEvents);
@@ -382,9 +408,13 @@ int main(int argc, char* argv[])
 	master.foreach( [&](Block* b, const diy::Master::ProxyWithLink& cp)
 			{ b->init_data(cp, nConfigs, evts_per_block, seed, indir, pfile, analyses, out_file, dfile, mfile, verbose); });
 
+
 	// run MadGraph to generate gridpack
 	master.foreach( [&](Block* b, const diy::Master::ProxyWithLink& cp)
 			{ b->gen_mg5_gridpack(cp, nConfigs, verbose); });
+
+	// make sure blocks are initialised!
+	world.barrier();
 
 	// Let's decompose the problem
 	int k = 2;       // the radix of the k-ary reduction tree
@@ -402,43 +432,44 @@ int main(int argc, char* argv[])
 	diy::RegularMergePartners::KVSVector my_kvs;                         // subset of orig_kvs for only rounds in the final dimension
 	divs = orig_partners.divisions();                                    // number of blocks in each dimension
 
-    // modify orig_kvs to get my_kvs
-    for (auto i = 0; i < orig_kvs.size(); i++)
-        if (orig_kvs[i].dim == dim - 1)                        // keep last dim only
-            my_kvs.push_back(orig_kvs[i]);
+	// modify orig_kvs to get my_kvs
+	for (auto i = 0; i < orig_kvs.size(); i++)
+		if (orig_kvs[i].dim == dim - 1)                        // keep last dim only
+			my_kvs.push_back(orig_kvs[i]);
 
-    // debug: print orig_kvs and my_kvs
+	// debug: print orig_kvs and my_kvs
 	/***
-    fmt::print(stderr, "orig_kvs: ");
-    for (auto i = 0; i < orig_kvs.size(); i++)
-        fmt::print(stderr, "[ dim={}, k={} ]", orig_kvs[i].dim, orig_kvs[i].size);
-    fmt::print(stderr, "\n");
-    fmt::print(stderr, "my_kvs: ");
-    for (auto i = 0; i < my_kvs.size(); i++)
-        fmt::print(stderr, "[ dim={}, k={} ]", my_kvs[i].dim, my_kvs[i].size);
-    fmt::print(stderr, "\n\n");
-	****/
+	  fmt::print(stderr, "orig_kvs: ");
+	  for (auto i = 0; i < orig_kvs.size(); i++)
+	  fmt::print(stderr, "[ dim={}, k={} ]", orig_kvs[i].dim, orig_kvs[i].size);
+	  fmt::print(stderr, "\n");
+	  fmt::print(stderr, "my_kvs: ");
+	  for (auto i = 0; i < my_kvs.size(); i++)
+	  fmt::print(stderr, "[ dim={}, k={} ]", my_kvs[i].dim, my_kvs[i].size);
+	  fmt::print(stderr, "\n\n");
+	 ****/
 
-    // Now, do the actual reduction in the last dimension using explicit divs and my_kvs vectors
-    diy::RegularMergePartners  my_merge_partner(
+	// Now, do the actual reduction in the last dimension using explicit divs and my_kvs vectors
+	diy::RegularMergePartners  my_merge_partner(
 			divs,                // explicit divisions vector
 			my_kvs,              // explicit vector of rounds
 			contiguous);         // contiguous = true: distance doubling
 
-    diy::RegularBroadcastPartners my_bc_partner(
+	diy::RegularBroadcastPartners my_bc_partner(
 			divs,                // explicit divisions vector
 			my_kvs,              // explicit vector of rounds
 			contiguous);         // contiguous = true: distance doubling
 
 
-    diy::RegularMergePartners  partners(decomposer,  // domain decomposition
-                                        k,           // radix of k-ary reduction
-                                        true); // contiguous = true: distance doubling
+	diy::RegularMergePartners  partners(decomposer,  // domain decomposition
+			k,           // radix of k-ary reduction
+			true); // contiguous = true: distance doubling
 
 
 
 	// Broadcast the runconfig to the other blocks
 	diy::reduce(master, assigner, my_bc_partner, &bc_pointconfig<Block>);
+
 
 	if (verbose) master.foreach([verbose](Block* b, const diy::Master::ProxyWithLink& cp)
 			{print_block(b, cp, verbose); });
@@ -457,9 +488,20 @@ int main(int argc, char* argv[])
 	master.foreach([nConfigs, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
 			{ write_yoda(b, cp, nConfigs, verbose); });
 
+	// make sure all data are written before clear buffers
+	world.barrier();
+
 	// Wipe the buffer to prevent double counting etc.
 	master.foreach([world, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
 			{ clear_buffer(b, cp, verbose); });
 
-    return 0;
+	// auto end = std::chrono::system_clock::now();
+	// std::chrono::duration<double> diff = end - start;
+	if(world.rank() == 0) {
+		std::time_t tttt = std::time(nullptr);
+		fmt::print(stderr, "FINISHED on Local Time: {} \n",
+				std::put_time(std::localtime(&tttt), "%c %Z") );
+	}
+	// fmt::print(stderr, "{} FINISHED, Takes {} minutes\n", argv[0], diff.count()/60);
+	return 0;
 }
