@@ -19,7 +19,7 @@
 #include <diy/partners/broadcast.hpp>
 #include <diy/reduce-operations.hpp>
 
-
+#include "PtjTMSdefinitionHooks.h" // Stefan's unlops hook
 
 #include "config.hpp"
 #include "GenericBlock.hpp"
@@ -40,6 +40,7 @@
 
 #include "HepMC/IO_GenEvent.h"
 
+#include "fastjet/ClusterSequence.hh" // This is to quieten fastjet
 
 #include "lheh5.h"
 
@@ -66,7 +67,7 @@ class LHAupH5 : public Pythia8::LHAup {
      std::vector<int>    _vtrials;
      _trials    .select({firstEvent}, {readSize}).read(_vtrials);
      _nTrials = std::accumulate(_vtrials.begin(), _vtrials.end(), 0);
-     if (verbose) fmt::print(stderr, "sum trials {}\n", _nTrials);
+     if (verbose) fmt::print(stderr, "sum trials {}\n", _nTrials); // _nTrials = nAcceptSH
     }
   
        
@@ -75,6 +76,8 @@ class LHAupH5 : public Pythia8::LHAup {
     // Read and set the info from init and procInfo
     bool setInit() override;// override;
     bool setEvent(int idProc=0) override;// override;
+
+    int nTrials() { return _nTrials; }
 
     int getSize() { return lheevents._vnparticles.size(); }
   
@@ -153,11 +156,12 @@ bool LHAupH5::setEvent(int idProc)
 
   lheh5::EventHeader eHeader = lheevents.mkEventHeader( _numberRead );
 
-  setProcess(eHeader.pid,eHeader.weight*(1. / (1e9*_nTrials)),eHeader.scale,eHeader.aqed,eHeader.aqcd);
+  //setProcess(eHeader.pid,eHeader.weight*(1. / (1e9*_nTrials)),eHeader.scale,eHeader.aqed,eHeader.aqcd);
+  setProcess(eHeader.pid,eHeader.weight,eHeader.scale,eHeader.aqed,eHeader.aqcd);
 
   nupSave    = eHeader.nparticles;
   idprupSave = eHeader.pid;
-  xwgtupSave = eHeader.weight*(1. / (1e9*_nTrials));
+  xwgtupSave = eHeader.weight;//*(1. / (1e9*_nTrials));
   scalupSave = eHeader.scale; // TODO which scale?
   aqedupSave = eHeader.aqed;
   aqcdupSave = eHeader.aqcd;
@@ -189,15 +193,11 @@ bool LHAupH5::setEvent(int idProc)
   scalesNow.mups  = eHeader.scale;
 
   infoPtr->scales = &scalesNow;
+  
+  infoPtr->setEventAttribute("npLO", "0");  
+  infoPtr->setEventAttribute("npNLO", "0");  
 
 
-  // Trials --- TODO ask Stefan again
-  //infoPtr->setLHEF3EventInfo( &reader.hepeup.attributes, 0, 0, 0, 0, 0,
-       //vector<double>(), "", 1.0);
-
-  //setIdX(this->id1(), this->id2(), this->x1(), this->x2());
-  //setPdf(this->id1pdf(), this->id2pdf(), this->x1pdf(), this->x2pdf(),
-         //this->scalePDF(), this->pdf1(), this->pdf2(), this->pdfIsSet());
   _numberRead++;
 
 
@@ -233,6 +233,7 @@ void print_block(Block* b,                             // local block
 //void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> physConfig, std::vector<std::string> analyses, bool verbose)
 void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size, int rank,  bool verbose, int npc, string in_file)
 {
+   //if (cp.gid()>0)  set_fastjet_banner_stream(0);
   // This make rivet only report ERRORs
   // TODO: can we have a global flag to steer verbosity of all moving parts?
   if (!verbose) Rivet::Log::setLevel("Rivet", Rivet::Log::WARNING);
@@ -274,6 +275,38 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   // Give the external reader to Pythia
   b->pythia.setLHAupPtr(LHAup);
 
+   // hier unlops zeug
+   // Allow to set the number of addtional partons dynamically. TODO here important
+  HardProcessBookkeeping* hardProcessBookkeeping = NULL;
+  int scheme = ( b->pythia.settings.flag("Merging:doUMEPSTree")
+              || b->pythia.settings.flag("Merging:doUMEPSSubt")) ?
+              1 :
+               ( ( b->pythia.settings.flag("Merging:doUNLOPSTree")
+              || b->pythia.settings.flag("Merging:doUNLOPSSubt")
+              || b->pythia.settings.flag("Merging:doUNLOPSLoop")
+              || b->pythia.settings.flag("Merging:doUNLOPSSubtNLO")) ?
+              2 :
+              0 );
+  HardProcessBookkeeping* hardProcessBookkeepingPtr
+    = new HardProcessBookkeeping(scheme);
+
+  double sigmaTotal  = 0.;
+  double errorTotal  = 0.;
+  double xs = 0.;
+  for (int i=0; i < b->pythia.info.nProcessesLHEF(); ++i)
+    xs += b->pythia.info.sigmaLHEF(i);
+  if (verbose) fmt::print(stderr, "[{}] xs: {}\n", cp.gid(), xs);
+  double sigmaSample = 0., errorSample = 0.; // NOTE in Stefan's unlops this is reset for each to be merged multi
+
+  b->pythia.readString("Merging:unlopsTMSdefinition = 1");
+  int unlopsType = b->pythia.settings.mode("Merging:unlopsTMSdefinition");
+
+  Hist ptlund("pTlund", 100, 0., 200.);
+
+   MergingHooks* ptjTMSdefinitionPtr = (unlopsType<0)
+    ? NULL
+    : new PtjTMSdefinitionHooks(b->pythia.parm("Merging:TMS"),6.0, &ptlund);
+  if (unlopsType >0) b->pythia.setMergingHooksPtr( ptjTMSdefinitionPtr );
 
   // All configurations done, initialise Pythia
   b->pythia.init();
@@ -286,7 +319,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   b->ah = new Rivet::AnalysisHandler;
   b->ah->setIgnoreBeams();
 
-  // Add all anlyses to rivet
+  // Add all analyses to rivet
   // TODO: we may want to feed the "ignore beams" switch as well
   for (auto a : b->state.analyses) {
      b->ah->addAnalysis(a);
@@ -297,8 +330,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   // The event loop
   int nAbort = 5;
   int iAbort = 0;
-  if (verbose) 
-     fmt::print(stderr, "[{}] generating {} events\n", cp.gid(),  LHAup->getSize());
+  if (verbose)  fmt::print(stderr, "[{}] generating {} events\n", cp.gid(),  LHAup->getSize());
   for (int iEvent = 0; iEvent < LHAup->getSize(); ++iEvent) {
     if (!b->pythia.next()) {
       if (++iAbort < nAbort) continue; // TODO investigate influenec of apbort on sum trials
@@ -307,8 +339,46 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
     if (verbose && iEvent < 2 ) LHAup->listEvent();
     if (verbose) fmt::print(stderr, "[{}] event weight {} \n", cp.gid(), b->pythia.info.weight());
     //if (verbose) fmt::print(stderr, "[{}] event weight {} {} {}\n", cp.gid(), LHAup->weight(), b->pythia.info.weight(), b->pythia.info.eventWeightLHEF);
+      
+    // Get event weight(s).
+    double evtweight         = b->pythia.info.weight();
+    // Additional PDF/alphaS weight for internal merging.
+    evtweight               *= b->pythia.info.mergingWeightNLO()
+    // Additional weight due to random choice of reclustered/non-reclustered
+    // treatment. Also contains additional sign for subtractive samples.
+                                *hardProcessBookkeepingPtr->getNormFactor();
+    if (verbose) fmt::print(stderr, "[{}] after weight {} \n", cp.gid(), evtweight);
+
     HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
+
+    
+    // weight push_back
+    // Work with weighted (LHA strategy=-4) events.
+    double normhepmc = 1.;
+    if (abs(b->pythia.info.lhaStrategy()) == 4)
+      //normhepmc = 1. / double(1e9*nEvent);
+      normhepmc = 1. / double(LHAup->nTrials());
+      // Work with unweighted events.
+    else
+      //normhepmc = xs / double(1e9*nEvent);
+      normhepmc = xs / double(LHAup->nTrials());
+
+   normhepmc = 1. / double(LHAup->nTrials()); // TODO: how to set from param card???
+
+
+    hepmcevt->weights().push_back(evtweight*normhepmc);
+    if (verbose) fmt::print(stderr, "[{}] norm weight {} \n", cp.gid(), evtweight*normhepmc);
     b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
+
+    sigmaTotal  += evtweight*normhepmc;
+    sigmaSample += evtweight*normhepmc;
+    errorTotal  += pow2(evtweight*normhepmc);
+    errorSample += pow2(evtweight*normhepmc);
+    // Report cross section to hepmc
+    HepMC::GenCrossSection xsec;
+    xsec.set_cross_section( sigmaTotal*1e9, b->pythia.info.sigmaErr()*1e9 );
+    hepmcevt->set_cross_section( xsec );
+    if (verbose) fmt::print(stderr, "[{}] xsec {} \n", cp.gid(), sigmaTotal*1e9);
 
     // Here more
     try {b->ah->analyze( *hepmcevt ) ;} catch (const std::exception& e)
@@ -354,15 +424,18 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
       if (ao->type()=="Histo1D")
       {
          dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
-         dynamic_cast<YODA::Histo1D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+         //dynamic_cast<YODA::Histo1D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
       }
       else if (ao->type()=="Histo2D")
       {
          dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
-         dynamic_cast<YODA::Histo2D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+         //dynamic_cast<YODA::Histo2D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
       }
     }
   }
+  // Clean-up TODO important
+  delete hardProcessBookkeepingPtr;
+  if (unlopsType>0) delete ptjTMSdefinitionPtr;
 }
 
 
@@ -371,9 +444,11 @@ void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int rank, bool v
  if (verbose) fmt::print(stderr, "[{}] -- rank {} sees write_yoda \n", cp.gid(), rank);
   if (rank==0 && cp.gid()==0) {
     for (auto ao : b->buffer) {
-      if (ao->hasAnnotation("OriginalScaledBy"))
+      //if (ao->hasAnnotation("OriginalScaledBy"))
+      if (ao->hasAnnotation("ScaledBy"))
       {
-        double sc = std::stod(ao->annotation("OriginalScaledBy"));
+        //double sc = std::stod(ao->annotation("OriginalScaledBy"));
+        double sc = std::stod(ao->annotation("ScaledBy"));
         if (ao->type()=="Histo1D")
         {
            dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
