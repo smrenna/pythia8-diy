@@ -124,7 +124,8 @@ bool LHAupH5::setInit()
    
    int weightingStrategy;
    _init.getDataSet("weightingStrategy").read(weightingStrategy);
-   setStrategy(weightingStrategy);
+   //setStrategy(weightingStrategy);
+   setStrategy(-4);
    
    int numProcesses;
    _init.getDataSet("numProcesses").read(numProcesses);
@@ -194,8 +195,8 @@ bool LHAupH5::setEvent(int idProc)
 
   infoPtr->scales = &scalesNow;
   
-  infoPtr->setEventAttribute("npLO", "0");  
-  infoPtr->setEventAttribute("npNLO", "0");  
+  infoPtr->setEventAttribute("npLO",  std::to_string(eHeader.npLO));
+  infoPtr->setEventAttribute("npNLO", std::to_string(eHeader.npNLO));
 
 
   _numberRead++;
@@ -405,7 +406,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   //fmt::print(stderr, "[{}] xs after: {}\n", cp.gid(), b->pythia.info.sigmaGen());
   // Event loop is done, set xsection correctly and normalise histos
   // TODO: check that this setting of the xs is really correct
-  b->ah->setCrossSection(b->pythia.info.sigmaGen() * 1.0E9);
+  b->ah->setCrossSection( sigmaTotal*1e9);//b->pythia.info.sigmaGen() * 1.0E9);
   b->ah->finalize();
 
   // Push histos into block
