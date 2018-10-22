@@ -362,7 +362,7 @@ int main(int argc, char* argv[])
 	if( world.rank()==0 ) {
 		std::time_t tttt = std::time(nullptr);
 		fmt::print(stderr, "\n*** This is diy running Pythia8 ***\n");
-		fmt::print(stderr, "\n    Local Time:              {}n", std::put_time(std::localtime(&tttt), "%c %Z"));
+		fmt::print(stderr, "\n    Local Time:              {}\n", std::put_time(std::localtime(&tttt), "%c %Z"));
 		fmt::print(stderr, "\n    Universes:               {}\n", num_universes);
 		fmt::print(stderr, "\n    Physics configurations:  {}\n", nConfigs);
 		fmt::print(stderr, "\n    Number of events: {}\n", nEvents);
