@@ -195,9 +195,11 @@ bool LHAupH5::setEvent(int idProc)
 
   infoPtr->scales = &scalesNow;
   
+  //infoPtr->setEventAttribute("npLO",  std::to_string(1));
+  infoPtr->setEventAttribute("npNLO", std::to_string(-1));
   infoPtr->setEventAttribute("npLO",  std::to_string(eHeader.npLO));
-  infoPtr->setEventAttribute("npNLO", std::to_string(eHeader.npNLO));
 
+  listEvent();
 
   _numberRead++;
 
@@ -232,7 +234,7 @@ void print_block(Block* b,                             // local block
 
 
 //void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> physConfig, std::vector<std::string> analyses, bool verbose)
-void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size, int rank,  bool verbose, int npc, string in_file)
+void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size, int rank,  bool verbose, int npc, string in_file, int nMax)
 {
    //if (cp.gid()>0)  set_fastjet_banner_stream(0);
   // This make rivet only report ERRORs
@@ -259,11 +261,12 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   size_t nEvents  =  H5Sget_simple_extent_npoints(dspace);
   size_t ev_rank = floor(nEvents/size);
   // Detect testing
-  if (ev_rank > 1e6) ev_rank = 1e4;
+  //if (ev_rank > 1e6) ev_rank = 1e4;
   size_t eventOffset = rank*ev_rank;
   if (rank == size-1 && size>1) {
      ev_rank = nEvents-eventOffset;
   }
+  if (ev_rank>nMax) ev_rank=nMax;
 
   // TODO: can't hurt to test whether this logic ^^^ is correct
 
@@ -291,6 +294,8 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   HardProcessBookkeeping* hardProcessBookkeepingPtr
     = new HardProcessBookkeeping(scheme);
 
+  b->pythia.setUserHooksPtr(hardProcessBookkeepingPtr);
+
   double sigmaTotal  = 0.;
   double errorTotal  = 0.;
   double xs = 0.;
@@ -306,8 +311,8 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
 
    MergingHooks* ptjTMSdefinitionPtr = (unlopsType<0)
     ? NULL
-    : new PtjTMSdefinitionHooks(b->pythia.parm("Merging:TMS"),6.0, &ptlund);
-  if (unlopsType >0) b->pythia.setMergingHooksPtr( ptjTMSdefinitionPtr );
+    : new PtjTMSdefinitionHooks(b->pythia.parm("Merging:TMS"),6.0, &ptlund); // 6.0 is max rapidity of jets NOTE jet cone radius is currently hardcoded in hook
+  //if (unlopsType >0) b->pythia.setMergingHooksPtr( ptjTMSdefinitionPtr );
 
   // All configurations done, initialise Pythia
   b->pythia.init();
@@ -331,23 +336,29 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   // The event loop
   int nAbort = 5;
   int iAbort = 0;
-  if (verbose)  fmt::print(stderr, "[{}] generating {} events\n", cp.gid(),  LHAup->getSize());
+  if (verbose)  fmt::print(stderr, "[{}] generating  {} events\n", cp.gid(),  LHAup->getSize());
   for (int iEvent = 0; iEvent < LHAup->getSize(); ++iEvent) {
+    if (verbose) fmt::print(stderr, "[{}] is at event {}\n", cp.gid(), iEvent);
     if (!b->pythia.next()) {
+       if (verbose) b->pythia.stat();
+       if (verbose) LHAup->listEvent();
+
       if (++iAbort < nAbort) continue; // TODO investigate influenec of apbort on sum trials
       break;
     }
-    if (verbose && iEvent < 2 ) LHAup->listEvent();
+     if (verbose)  fmt::print(stderr, "[{}] is here\n", cp.gid());
+    //if (verbose && iEvent < 2 ) LHAup->listEvent();
+    if (verbose ) LHAup->listEvent();
     if (verbose) fmt::print(stderr, "[{}] event weight {} \n", cp.gid(), b->pythia.info.weight());
     //if (verbose) fmt::print(stderr, "[{}] event weight {} {} {}\n", cp.gid(), LHAup->weight(), b->pythia.info.weight(), b->pythia.info.eventWeightLHEF);
       
     // Get event weight(s).
     double evtweight         = b->pythia.info.weight();
     // Additional PDF/alphaS weight for internal merging.
-    evtweight               *= b->pythia.info.mergingWeightNLO()
+    //evtweight               *= b->pythia.info.mergingWeightNLO() // commented out
     // Additional weight due to random choice of reclustered/non-reclustered
     // treatment. Also contains additional sign for subtractive samples.
-                                *hardProcessBookkeepingPtr->getNormFactor();
+                                //*hardProcessBookkeepingPtr->getNormFactor();
     if (verbose) fmt::print(stderr, "[{}] after weight {} \n", cp.gid(), evtweight);
 
     HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
@@ -369,6 +380,8 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
 
     hepmcevt->weights().push_back(evtweight*normhepmc);
     if (verbose) fmt::print(stderr, "[{}] norm weight {} \n", cp.gid(), evtweight*normhepmc);
+    b->ToHepMC.set_print_inconsistency(false);
+    b->ToHepMC.set_free_parton_exception(false);
     b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
 
     sigmaTotal  += evtweight*normhepmc;
@@ -377,9 +390,9 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
     errorSample += pow2(evtweight*normhepmc);
     // Report cross section to hepmc
     HepMC::GenCrossSection xsec;
-    xsec.set_cross_section( sigmaTotal*1e9, b->pythia.info.sigmaErr()*1e9 );
+    xsec.set_cross_section( sigmaTotal, b->pythia.info.sigmaErr() );
     hepmcevt->set_cross_section( xsec );
-    if (verbose) fmt::print(stderr, "[{}] xsec {} \n", cp.gid(), sigmaTotal*1e9);
+    if (verbose) fmt::print(stderr, "[{}] xsec {} \n", cp.gid(), sigmaTotal);
 
     // Here more
     try {b->ah->analyze( *hepmcevt ) ;} catch (const std::exception& e)
@@ -406,7 +419,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   //fmt::print(stderr, "[{}] xs after: {}\n", cp.gid(), b->pythia.info.sigmaGen());
   // Event loop is done, set xsection correctly and normalise histos
   // TODO: check that this setting of the xs is really correct
-  b->ah->setCrossSection( sigmaTotal*1e9);//b->pythia.info.sigmaGen() * 1.0E9);
+  b->ah->setCrossSection( sigmaTotal);//b->pythia.info.sigmaGen() * 1.0E9);
   b->ah->finalize();
 
   // Push histos into block
@@ -607,8 +620,8 @@ int main(int argc, char* argv[])
        if (verbose) master.foreach([world](Block* b, const diy::Master::ProxyWithLink& cp)
                         {print_block(b, cp, world.rank()); });
 
-       master.foreach([world, verbose, ipc, in_file](Block* b, const diy::Master::ProxyWithLink& cp)
-                        {process_block_lhe(b, cp, world.size(), world.rank(), verbose, ipc, in_file); });
+       master.foreach([world, verbose, ipc, in_file, nEvents](Block* b, const diy::Master::ProxyWithLink& cp)
+                        {process_block_lhe(b, cp, world.size(), world.rank(), verbose, ipc, in_file, nEvents); });
 
 
        diy::reduce(master,              // Master object
