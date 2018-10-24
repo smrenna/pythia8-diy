@@ -29,6 +29,7 @@ if __name__ == "__main__":
     op = optparse.OptionParser(usage=__doc__)
     op.add_option("-v", "--debug", dest="DEBUG", action="store_true", default=False, help="Turn on some debug messages")
     op.add_option("-c", dest="COMPRESSION", type=int, default=4, help="GZip compression level (default: %default)")
+    op.add_option("-f", dest="FORCE", action="store_true", default=False, help="Allow overwriting (default: %default)")
     opts, args = op.parse_args()
 
     if len(args)!=3:
@@ -42,6 +43,25 @@ if __name__ == "__main__":
 
     # Get number of events in file
     nevents = f['index/start'].size
+
+    if "npLO" in f["event"].keys() and not opts.FORCE:
+        print("Error, npLO already exists. To overwrite, use -f")
+        import sys
+        sys.exit(1)
+    if "npNLO" in f["event"].keys() and not opts.FORCE:
+        print("Error, npNLO already exists. To overwrite, use -f")
+        import sys
+        sys.exit(1)
+
+    if "npLO" in f["event"].keys() and opts.FORCE:
+        f["event/npLO"][0:nevents] = npLO *np.ones(nevents, dtype=int)
+    if "npNLO" in f["event"].keys() and opts.FORCE:
+        f["event/npNLO"][0:nevents] = npNLO *np.ones(nevents, dtype=int)
+
+    if opts.FORCE:
+        f.close()
+        sys.exit(0)
+
     f.create_dataset("event/npLO",  data=npLO *np.ones(nevents, dtype=int), compression=opts.COMPRESSION)
     f.create_dataset("event/npNLO", data=npNLO*np.ones(nevents, dtype=int), compression=opts.COMPRESSION)
     f.close()
