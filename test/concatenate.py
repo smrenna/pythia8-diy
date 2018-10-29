@@ -62,12 +62,12 @@ if __name__ == "__main__":
     ds_i = [x for x in struct if x.startswith("init")     and "/" in x]
     ds_P = [x for x in struct if x.startswith("procInfo") and "/" in x]
     # Empty dataset but with correct size and dtype
-    for _I in ds_I: f.create_dataset(_I, (NEtot,),   dtype=g[_I].dtype)
-    for _e in ds_e: f.create_dataset(_e, (NEtot,),   dtype=g[_e].dtype)
-    for _p in ds_p: f.create_dataset(_p, (NPtot,),   dtype=g[_p].dtype)
+    for _I in ds_I: f.create_dataset(_I, (NEtot,),   dtype=g[_I].dtype, compression=opts.COMPRESSION)
+    for _e in ds_e: f.create_dataset(_e, (NEtot,),   dtype=g[_e].dtype, compression=opts.COMPRESSION)
+    for _p in ds_p: f.create_dataset(_p, (NPtot,),   dtype=g[_p].dtype, compression=opts.COMPRESSION)
     # Full dataset TODO think about makeing those attributes???
-    for _i in ds_i: f.create_dataset(_i, data=g[_i], dtype=g[_i].dtype)
-    for _P in ds_P: f.create_dataset(_P, data=g[_P], dtype=g[_P].dtype)
+    for _i in ds_i: f.create_dataset(_i, data=g[_i], dtype=g[_i].dtype, compression=opts.COMPRESSION)
+    for _P in ds_P: f.create_dataset(_P, data=g[_P], dtype=g[_P].dtype, compression=opts.COMPRESSION)
     g.close()
 
     # Iterate over ALL input files
