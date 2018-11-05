@@ -199,7 +199,7 @@ bool LHAupH5::setEvent(int idProc)
   infoPtr->setEventAttribute("npNLO", std::to_string(-1));
   infoPtr->setEventAttribute("npLO",  std::to_string(eHeader.npLO));
 
-  listEvent();
+  //listEvent();
 
   _numberRead++;
 
@@ -307,11 +307,17 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   b->pythia.readString("Merging:unlopsTMSdefinition = 1");
   int unlopsType = b->pythia.settings.mode("Merging:unlopsTMSdefinition");
 
-  Hist ptlund("pTlund", 100, 0., 200.);
+  //Hist ptlund("pTlund", 100, 0., 200.);
 
+   //MergingHooks* ptjTMSdefinitionPtr = (unlopsType<0)
+    //? NULL
+    //: new PtjTMSdefinitionHooks(b->pythia.parm("Merging:TMS"),6.0, &ptlund); // 6.0 is max rapidity of jets NOTE jet cone radius is currently hardcoded in hook
    MergingHooks* ptjTMSdefinitionPtr = (unlopsType<0)
     ? NULL
-    : new PtjTMSdefinitionHooks(b->pythia.parm("Merging:TMS"),6.0, &ptlund); // 6.0 is max rapidity of jets NOTE jet cone radius is currently hardcoded in hook
+    : new PtjTMSdefinitionHooks(b->pythia.parm("Merging:TMS"),6.0);
+   if (unlopsType >0) b->pythia.setMergingHooksPtr( ptjTMSdefinitionPtr );
+
+
   //if (unlopsType >0) b->pythia.setMergingHooksPtr( ptjTMSdefinitionPtr );
 
   // All configurations done, initialise Pythia
