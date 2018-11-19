@@ -64,17 +64,17 @@ class LHAupH5 : public Pythia8::LHAup {
       lheevents = lheh5::readEvents(_index, _particle, _event, firstEvent, readSize);
       // Sum of trials for ALL to be processed events!!!
       DataSet _trials     =  _event.getDataSet("trials");
-      std::vector<int>    _vtrials;
+      std::vector<size_t>    _vtrials;
       _trials    .select({0}, {nTotal}).read(_vtrials);
-      _nTrials = std::accumulate(_vtrials.begin(), _vtrials.end(), 0);
-      if (verbose) fmt::print(stderr, "sum trials {}\n", _nTrials);
+      _nTrials = std::accumulate(_vtrials.begin(), _vtrials.end(), 0.0);
+      fmt::print(stderr, "sum trials {}\n", _nTrials);
     }
     
     // Read and set the info from init and procInfo
     bool setInit() override;// override;
     bool setEvent(int idProc=0) override;// override;
 
-    int nTrials() { return _nTrials; }
+    size_t nTrials() { return _nTrials; }
 
     int getSize() { return lheevents._vnparticles.size(); }
   
@@ -84,8 +84,8 @@ class LHAupH5 : public Pythia8::LHAup {
     // Connect with groups
     HighFive::Group                         _index, _particle, _event, _init, _procInfo;
     lheh5::Events                        lheevents;
-    int                                     _numberRead;
-    int                                     _nTrials;
+    size_t                                     _numberRead;
+    size_t                                     _nTrials;
     double                                  _sumW;
 
     // Flag to set particle production scales or not.
@@ -243,10 +243,10 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   }
   size_t ev_rank = floor(nEvents/size);
   size_t eventOffset = rank*ev_rank;
-  fmt::print(stderr, "[{}] reads {} events starting at {}\n", cp.gid(), ev_rank, eventOffset);
+  fmt::print(stderr, "[{}] reads {}/{} events starting at {}\n", cp.gid(), ev_rank, nEvents, eventOffset);
   
   // Create an LHAup object that can access relevant information in pythia.
-  LHAupH5* LHAup = new LHAupH5( &file , eventOffset, ev_rank, nMax, verbose);
+  LHAupH5* LHAup = new LHAupH5( &file , eventOffset, ev_rank, nEvents, verbose);
 
   b->pythia.settings.mode("Beams:frameType", 5);
   // Give the external reader to Pythia
@@ -306,7 +306,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   int nAbort = 5;
   int iAbort = 0;
   if (verbose)  fmt::print(stderr, "[{}] generating  {} events\n", cp.gid(),  LHAup->getSize());
-  for (int iEvent = 0; iEvent < LHAup->getSize(); ++iEvent) {
+  for (size_t iEvent = 0; iEvent < LHAup->getSize(); ++iEvent) {
     if (verbose) fmt::print(stderr, "[{}] is at event {}\n", cp.gid(), iEvent);
     if (!b->pythia.next()) {
        if (verbose) b->pythia.stat();
@@ -315,7 +315,6 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
       if (++iAbort < nAbort) continue; // TODO investigate influenec of apbort on sum trials
       break;
     }
-     if (verbose)  fmt::print(stderr, "[{}] is here\n", cp.gid());
     //if (verbose && iEvent < 2 ) LHAup->listEvent();
     if (verbose ) LHAup->listEvent();
     if (verbose) fmt::print(stderr, "[{}] event weight {} \n", cp.gid(), b->pythia.info.weight());
@@ -370,7 +369,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
     }
     delete hepmcevt;
     // TODO: make 1000 a free parameter a la msg_every
-    if (iEvent%1000 == 0 && cp.gid()==0) {
+    if (iEvent%100 == 0 && cp.gid()==0) {
        if (b->state.num_events <0 | b->state.num_events > LHAup->getSize()) {
           fmt::print(stderr, "[{}]  {}/{} \n", cp.gid(),  iEvent, LHAup->getSize());
        }
@@ -379,10 +378,10 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
        }
     }
 
-    if (iEvent >= b->state.num_events && b->state.num_events>=0) {
-       fmt::print(stderr, "[{}] exiting event loop after: {}/{}\n", cp.gid(), iEvent, b->state.num_events);
-       break;
-    }
+    //if (iEvent >= b->state.num_events && b->state.num_events>=0) {
+       //fmt::print(stderr, "[{}] exiting event loop after: {}/{}\n", cp.gid(), iEvent, b->state.num_events);
+       //break;
+    //}
   }
 
   // Event loop is done, set xsection correctly and normalise histos
