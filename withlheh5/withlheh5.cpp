@@ -52,7 +52,7 @@ using namespace lheh5;
 
 class LHAupH5 : public Pythia8::LHAup {
   public:
-    LHAupH5( HighFive::File* file_, size_t firstEvent, size_t readSize, bool verbose=false) : _numberRead(0),  _sumW(0) {
+    LHAupH5( HighFive::File* file_, size_t firstEvent, size_t readSize, size_t nTotal, bool verbose=false) : _numberRead(0),  _sumW(0) {
       file = file_;
       _index       = file->getGroup("index");
       _particle    = file->getGroup("particle");
@@ -62,16 +62,13 @@ class LHAupH5 : public Pythia8::LHAup {
       // This reads and holds the information of readSize events, starting from firstEvent
       setInit();
       lheevents = lheh5::readEvents(_index, _particle, _event, firstEvent, readSize);
-     // Sum of trials for this block
-     DataSet _trials     =  _event.getDataSet("trials");
-     std::vector<int>    _vtrials;
-     _trials    .select({firstEvent}, {readSize}).read(_vtrials);
-     _nTrials = std::accumulate(_vtrials.begin(), _vtrials.end(), 0);
-     if (verbose) fmt::print(stderr, "sum trials {}\n", _nTrials); // _nTrials = nAcceptSH
+      // Sum of trials for ALL to be processed events!!!
+      DataSet _trials     =  _event.getDataSet("trials");
+      std::vector<int>    _vtrials;
+      _trials    .select({0}, {nTotal}).read(_vtrials);
+      _nTrials = std::accumulate(_vtrials.begin(), _vtrials.end(), 0);
+      if (verbose) fmt::print(stderr, "sum trials {}\n", _nTrials);
     }
-  
-       
-    //void setScalesFromLHEF(bool b) { setScalesFromLHEF_ = b; }
     
     // Read and set the info from init and procInfo
     bool setInit() override;// override;
@@ -90,10 +87,8 @@ class LHAupH5 : public Pythia8::LHAup {
     int                                     _numberRead;
     int                                     _nTrials;
     double                                  _sumW;
-  
 
     // Flag to set particle production scales or not.
-    //bool setScalesFromLHEF_;
     LHAscales scalesNow;
 
 
@@ -101,9 +96,6 @@ class LHAupH5 : public Pythia8::LHAup {
 
 bool LHAupH5::setInit()
 {
-  /*   if (!runInfo) return false;
-       const HEPRUP &heprup = *runInfo->getHEPRUP();*/
-   
    int beamA, beamB;
    double energyA, energyB;
    int PDFgroupA, PDFgroupB;
@@ -124,7 +116,6 @@ bool LHAupH5::setInit()
    
    int weightingStrategy;
    _init.getDataSet("weightingStrategy").read(weightingStrategy);
-   //setStrategy(weightingStrategy);
    setStrategy(-4);
    
    int numProcesses;
@@ -148,7 +139,6 @@ bool LHAupH5::setInit()
      xErrSumSave += pow2(error[np]);
    }
 
-
   return true;
 }
 
@@ -166,9 +156,6 @@ bool LHAupH5::setEvent(int idProc)
   scalupSave = eHeader.scale; // TODO which scale?
   aqedupSave = eHeader.aqed;
   aqcdupSave = eHeader.aqcd;
-  // Set directly!  what is scale?   
-  //getpro >> nupSave >> idprupSave >> xwgtupSave >> scalupSave
-    //>> aqedupSave >> aqcdupSave;
 
   double scalein = -1.;
 
@@ -195,18 +182,12 @@ bool LHAupH5::setEvent(int idProc)
 
   infoPtr->scales = &scalesNow;
   
-  //infoPtr->setEventAttribute("npLO",  std::to_string(1));
-  infoPtr->setEventAttribute("npNLO", std::to_string(-1));
   infoPtr->setEventAttribute("npLO",  std::to_string(eHeader.npLO));
-
-  //listEvent();
+  infoPtr->setEventAttribute("npNLO", std::to_string(eHeader.npNLO));
 
   _numberRead++;
-
-
   return true;
 }
-
 
 
 #include "opts.h"
@@ -216,7 +197,6 @@ typedef diy::RegularGridLink RCLink;
 
 typedef GenericBlock<Bounds, PointConfig, AnalysisObjects> Block;
 typedef ConfigBlockAdder<Bounds, RCLink, Block> AddBlock;
-
 
 void print_block(Block* b,                             // local block
                  const diy::Master::ProxyWithLink& cp, // communication proxy
@@ -232,12 +212,15 @@ void print_block(Block* b,                             // local block
    fmt::print(stderr, "\n");
 }
 
-
 //void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> physConfig, std::vector<std::string> analyses, bool verbose)
 void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size, int rank,  bool verbose, int npc, string in_file, int nMax)
 {
-   //if (cp.gid()>0)  set_fastjet_banner_stream(0);
-  // This make rivet only report ERRORs
+   // TODO does that work???
+   //if (cp.gid()>0)  {
+      //fastjet::ClusterSequence ___;
+      //___.set_fastjet_banner_stream(0);
+   //}
+  // This makes rivet only report ERRORs
   // TODO: can we have a global flag to steer verbosity of all moving parts?
   if (!verbose) Rivet::Log::setLevel("Rivet", Rivet::Log::WARNING);
 
@@ -245,35 +228,25 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   if (verbose) b->pythia.readString("Print:quiet = off");
   else b->pythia.readString("Print:quiet = on");
 
-  //b->pythia.readString("Print:quiet = on");
-  // Tell Pythia that the we are handling the LHE information
-
   // Configure pythia with a vector of strings
   for (auto s  : b->state.conf) b->pythia.readString(s);
-
   // Py8 random seed for this block read from point config
   b->pythia.readString("Random:setSeed = on");
   b->pythia.readString("Random:seed = " + std::to_string(b->state.seed+cp.gid()));
-
+  // TODO seed mode 3, i.e. draw nrank random numbers
 
   HighFive::File file(in_file, HighFive::File::ReadOnly);  
   hid_t dspace = H5Dget_space(file.getDataSet("index/start").getId());
   size_t nEvents  =  H5Sget_simple_extent_npoints(dspace);
-  size_t ev_rank = floor(nEvents/size);
-  // Detect testing
-  //if (ev_rank > 1e6) ev_rank = 1e4;
-  size_t eventOffset = rank*ev_rank;
-  if (rank == size-1 && size>1) {
-     ev_rank = nEvents-eventOffset;
+  if (nMax > 0 && nMax < nEvents) {
+     nEvents = nMax;
   }
-  if (ev_rank>nMax) ev_rank=nMax;
-
-  // TODO: can't hurt to test whether this logic ^^^ is correct
-
-  if (verbose) 
-     fmt::print(stderr, "[{}] reads {} events starting at {}\n", cp.gid(), ev_rank, eventOffset);
+  size_t ev_rank = floor(nEvents/size);
+  size_t eventOffset = rank*ev_rank;
+  fmt::print(stderr, "[{}] reads {} events starting at {}\n", cp.gid(), ev_rank, eventOffset);
+  
   // Create an LHAup object that can access relevant information in pythia.
-  LHAupH5* LHAup = new LHAupH5( &file , eventOffset, ev_rank, verbose);
+  LHAupH5* LHAup = new LHAupH5( &file , eventOffset, ev_rank, nMax, verbose);
 
   b->pythia.settings.mode("Beams:frameType", 5);
   // Give the external reader to Pythia
@@ -307,27 +280,17 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   b->pythia.readString("Merging:unlopsTMSdefinition = 1");
   int unlopsType = b->pythia.settings.mode("Merging:unlopsTMSdefinition");
 
-  //Hist ptlund("pTlund", 100, 0., 200.);
-
-   //MergingHooks* ptjTMSdefinitionPtr = (unlopsType<0)
-    //? NULL
-    //: new PtjTMSdefinitionHooks(b->pythia.parm("Merging:TMS"),6.0, &ptlund); // 6.0 is max rapidity of jets NOTE jet cone radius is currently hardcoded in hook
    MergingHooks* ptjTMSdefinitionPtr = (unlopsType<0)
     ? NULL
     : new PtjTMSdefinitionHooks(b->pythia.parm("Merging:TMS"),6.0);
-   if (unlopsType >0) b->pythia.setMergingHooksPtr( ptjTMSdefinitionPtr );
-
-
-  //if (unlopsType >0) b->pythia.setMergingHooksPtr( ptjTMSdefinitionPtr );
+  if (unlopsType >0) b->pythia.setMergingHooksPtr( ptjTMSdefinitionPtr );
 
   // All configurations done, initialise Pythia
   b->pythia.init();
 
-  // Delete the AnalysisHandlerPtr to ensure there is no memory
-  if (b->ah)
-  {
-    delete b->ah;
-  }
+  // Delete the AnalysisHandlerPtr to ensure there is no memory confusion
+  if (b->ah) delete b->ah;
+  
   b->ah = new Rivet::AnalysisHandler;
   b->ah->setIgnoreBeams();
 
@@ -364,7 +327,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
     //evtweight               *= b->pythia.info.mergingWeightNLO() // commented out
     // Additional weight due to random choice of reclustered/non-reclustered
     // treatment. Also contains additional sign for subtractive samples.
-                                //*hardProcessBookkeepingPtr->getNormFactor();
+                                //*hardProcessBookkeepingPtr->getNormFactor(); // NOTE this would be necessary for NLO
     if (verbose) fmt::print(stderr, "[{}] after weight {} \n", cp.gid(), evtweight);
 
     HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
@@ -372,16 +335,16 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
     
     // weight push_back
     // Work with weighted (LHA strategy=-4) events.
-    double normhepmc = 1.;
-    if (abs(b->pythia.info.lhaStrategy()) == 4)
-      //normhepmc = 1. / double(1e9*nEvent);
-      normhepmc = 1. / double(LHAup->nTrials());
-      // Work with unweighted events.
-    else
-      //normhepmc = xs / double(1e9*nEvent);
-      normhepmc = xs / double(LHAup->nTrials());
+    //double normhepmc = 1.;
+    //if (abs(b->pythia.info.lhaStrategy()) == 4)  // Triggering in l 128
+      ////normhepmc = 1. / double(1e9*nEvent);
+      //normhepmc = 1. / double(LHAup->nTrials());
+      //// Work with unweighted events.
+    //else
+      ////normhepmc = xs / double(1e9*nEvent);
+      //normhepmc = xs / double(LHAup->nTrials());
 
-   normhepmc = 1. / double(LHAup->nTrials()); // TODO: how to set from param card???
+    double normhepmc = 1. / double(LHAup->nTrials()); //
 
 
     hepmcevt->weights().push_back(evtweight*normhepmc);
@@ -422,18 +385,16 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
     }
   }
 
-  //fmt::print(stderr, "[{}] xs after: {}\n", cp.gid(), b->pythia.info.sigmaGen());
   // Event loop is done, set xsection correctly and normalise histos
   // TODO: check that this setting of the xs is really correct
+  b->pythia.stat();
   b->ah->setCrossSection( sigmaTotal);//b->pythia.info.sigmaGen() * 1.0E9);
   b->ah->finalize();
 
   // Push histos into block
   b->data = b->ah->getData();
-
   // Debug write out --- uncomment to write each block's YODA file
   //b->ah->writeData(std::to_string((1+npc)*(b->state.seed+cp.gid()))+".yoda");
-
 
   // This is a bit annoying --- we need to unscale Histo1D and Histo2D beforge the reduction
   // TODO: Figure out whether this is really necessary
