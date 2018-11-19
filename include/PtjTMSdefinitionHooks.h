@@ -248,7 +248,7 @@ double PtjTMSdefinitionHooks::tmsDefinition( const Event& event){
   // Only consider first emissions.
   if (!isFirstEmission(event)) return -1.0;
 
-  double yPartonMax = 100.;
+  double yPartonMax = 6.;
   double Rparam = 0.4;
 
   // Fastjet analysis - select algorithm and parameters
