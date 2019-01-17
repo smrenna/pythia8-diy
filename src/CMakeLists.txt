@@ -24,3 +24,10 @@ install(TARGETS mg5_py8_diy
     DESTINATION ${CMAKE_INSTALL_PREFIX/bin}
     RUNTIME DESTINATION bin
 	)
+
+add_executable              (mg5_py8_diy_work mg5_py8_diy_work.cpp)
+target_link_libraries (mg5_py8_diy_work LINK_PUBLIC ${libraries} diygen)
+install(TARGETS mg5_py8_diy_work
+    DESTINATION ${CMAKE_INSTALL_PREFIX/bin}
+    RUNTIME DESTINATION bin
+	)

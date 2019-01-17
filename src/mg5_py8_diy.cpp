@@ -182,6 +182,7 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose
 			break;
 		}
 		HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
+
 		b->ToHepMC.fill_next_event( b->pythia, hepmcevt);
 
 		try {b->ah->analyze( *hepmcevt ) ;} catch (const std::exception& e)
@@ -473,7 +474,7 @@ int main(int argc, char* argv[])
 
 	if (verbose) master.foreach([verbose](Block* b, const diy::Master::ProxyWithLink& cp)
 			{print_block(b, cp, verbose); });
-
+/***
 	master.foreach([world, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
 			{process_block(b, cp, verbose); });
 
@@ -494,7 +495,7 @@ int main(int argc, char* argv[])
 	// Wipe the buffer to prevent double counting etc.
 	master.foreach([world, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
 			{ clear_buffer(b, cp, verbose); });
-
+**/
 	// auto end = std::chrono::system_clock::now();
 	// std::chrono::duration<double> diff = end - start;
 	if(world.rank() == 0) {
