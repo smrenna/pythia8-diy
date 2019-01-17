@@ -23,7 +23,7 @@ void reduceData(B* b,
   typedef decltype(std::declval<B>().reduceData()) return_type;
   typedef typename std::remove_reference<return_type>::type const_type;
   typedef typename std::remove_const<const_type>::type data_type;
-  unsigned round = rp.round(); // current round number
+  //unsigned round = rp.round(); // current round number
   // can accumulate into the local variable and then enqueue that.
   if(b->reduceBuffer().size()!=b->reduceData().size())
     b->reduceBuffer() = b->reduceData();
@@ -62,8 +62,7 @@ void bc_pointconfig(B* b,                                  // local block
          const diy::ReduceProxy& rp,                // communication proxy
          const diy::RegularBroadcastPartners& partners) // partners of the current block
 {
-    unsigned   round    = rp.round();               // current round number
-
+    //unsigned   round    = rp.round();               // current round number
     // step 1: dequeue
     for (int i=0; i < rp.in_link().size(); ++i)
     {

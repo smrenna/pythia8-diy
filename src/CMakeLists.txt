@@ -1,4 +1,4 @@
-add_library(diygen SHARED config.cpp CalcConfig.cpp)
+add_library(diygen SHARED CalcConfig.cpp)
 install(TARGETS diygen
     DESTINATION ${CMAKE_INSTALL_PREFIX/lib}
     LIBRARY DESTINATION lib  # <-- Add this line

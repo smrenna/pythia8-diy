@@ -123,7 +123,7 @@ bool addThisKind(AO_ptr& copy, AO_ptr const& other)
 
   if(typeid(*bt).hash_code() == typeid(T).hash_code())
     {
-
+      // TODO: this test is causing a lot of warnings at compile time, maybe rewrite?
       try {auto& nh = dynamic_cast<T&>(*copy) ;} catch (const std::exception& e)
       {
         fmt::print(stderr, "\n\n exception in add h1d 1: {} {} {}\n", e.what(), copy->path(), copy->title());
