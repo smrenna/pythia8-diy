@@ -141,12 +141,12 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
       if (ao->type()=="Histo1D")
       {
          dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
-         //dynamic_cast<YODA::Histo1D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+         dynamic_cast<YODA::Histo1D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
       }
       else if (ao->type()=="Histo2D")
       {
          dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
-         //dynamic_cast<YODA::Histo2D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+         dynamic_cast<YODA::Histo2D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
       }
     }
   }
@@ -158,11 +158,11 @@ void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int rank, bool v
  if (verbose) fmt::print(stderr, "[{}] -- rank {} sees write_yoda \n", cp.gid(), rank);
   if (rank==0 && cp.gid()==0) {
     for (auto ao : b->buffer) {
-      //if (ao->hasAnnotation("OriginalScaledBy"))
-      if (ao->hasAnnotation("ScaledBy"))
+      if (ao->hasAnnotation("OriginalScaledBy"))
+      //if (ao->hasAnnotation("ScaledBy"))
       {
-        double sc = std::stod(ao->annotation("ScaledBy"));
-        //double sc = std::stod(ao->annotation("OriginalScaledBy"));
+        //double sc = std::stod(ao->annotation("ScaledBy"));
+        double sc = std::stod(ao->annotation("OriginalScaledBy"));
         if (ao->type()=="Histo1D")
         {
            dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
