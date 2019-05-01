@@ -79,7 +79,7 @@ set (MY_PUBLIC_HEADERS
 set                         (CMAKE_INCLUDE_SYSTEM_FLAG_CXX "-isystem")
 include_directories         (${CMAKE_CURRENT_SOURCE_DIR}/include
                             ${DIY_INCLUDE_DIRS}
-			    ${YODA_DIR}/include
+			    			${YODA_DIR}/include
                             ${HEPMC_DIR}/include
                             ${RIVET_DIR}/include
                             ${PYTHIA8_DIR}/include
@@ -99,8 +99,8 @@ endif                       ()
 # Libraries
 set                         (libraries
                              ${libraries}
-			     ${YODA_DIR}/lib/libYODA${CMAKE_SHARED_LIBRARY_SUFFIX}
-			     ${RIVET_DIR}/lib/libRivet${CMAKE_SHARED_LIBRARY_SUFFIX}
+			     		 	 ${YODA_DIR}/lib/libYODA${CMAKE_SHARED_LIBRARY_SUFFIX}
+			     		  	 ${RIVET_DIR}/lib/libRivet${CMAKE_SHARED_LIBRARY_SUFFIX}
                              ${HEPMC_DIR}/lib/libHepMC${CMAKE_SHARED_LIBRARY_SUFFIX}
                              ${PYTHIA8_DIR}/lib/libpythia8${CMAKE_SHARED_LIBRARY_SUFFIX}
                              ${FASTJET_DIR}/lib/libfastjet${CMAKE_SHARED_LIBRARY_SUFFIX}
