@@ -75,6 +75,12 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
   // TODO: can we have a global flag to steer verbosity of all moving parts?
   if (!verbose) Rivet::Log::setLevel("Rivet", Rivet::Log::ERROR);
 
+  // Explicit desctruction and recreation of pythia --- this is important when running multiple
+  // physics configs!!! https://stackoverflow.com/questions/1124634/call-destructor-and-then-constructor-resetting-an-object
+  (&b->pythia)->~Pythia();
+  new (&b->pythia) Pythia();
+
+
   // Minimise pythia's output
   if (verbose) b->pythia.readString("Print:quiet = off");
   else b->pythia.readString("Print:quiet = on");
@@ -87,8 +93,9 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
   b->pythia.readString("Random:seed = " + std::to_string(b->state.seed+cp.gid()));
 
   // All configurations done, initialise Pythia
-  b->pythia.initPtrs(); // TODO --- is this really necessary here?
+  //b->pythia.initPtrs(); // TODO --- is this really necessary here?
   b->pythia.init();
+  //fmt::print(stderr, "[{}] ### W {} - T {} - S {}  \n", cp.gid(), b->pythia.info.weight(), b->pythia.info.nTried(), b->pythia.info.sigmaGen() * 1.0E9);
 
   // Delete the AnalysisHandlerPtr to ensure there is no memory
   if (b->ah)
@@ -120,6 +127,7 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
     delete hepmcevt;
     if (iEvent%1000 == 0 && cp.gid()==0) fmt::print(stderr, "[{}]  {}/{} \n", cp.gid(),  iEvent, b->state.num_events);;
   }
+
 
   // Event loop is done, set xsection correctly and normalise histos
   b->ah->setCrossSection(b->pythia.info.sigmaGen() * 1.0E9);
