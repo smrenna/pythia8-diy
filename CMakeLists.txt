@@ -82,6 +82,7 @@ include_directories         (${CMAKE_CURRENT_SOURCE_DIR}/include
 			    ${YODA_DIR}/include
                             ${HEPMC_DIR}/include
                             ${RIVET_DIR}/include
+                            ${HIGHFIVE_DIR}/include 
                             ${PYTHIA8_DIR}/include
                             ${FASTJET_DIR}/include
                              SYSTEM ${MPI_INCLUDE_PATH}
@@ -106,6 +107,10 @@ set                         (libraries
                              ${FASTJET_DIR}/lib/libfastjet${CMAKE_SHARED_LIBRARY_SUFFIX}
                              )
 
+# Test if user has supplied -DHIGHFIVE_DIR                        
+if (NOT HIGHFIVE_DIR)
+    message                 (FATAL_ERROR " Need HighFive in order to build program --- check -DHIGHFIVE_DIR")
+endif                       ()
 
 # Test if libs are found
 find_library(YODA_LIB
@@ -182,7 +187,7 @@ endif                       ()
 
 set(CPACK_PACKAGE_VERSION_MAJOR "0")
 set(CPACK_PACKAGE_VERSION_MINOR "7")
-set(CPACK_PACKAGE_VERSION_PATCH "0")
+set(CPACK_PACKAGE_VERSION_PATCH "1")
 set(CPACK_SOURCE_GENERATOR "TGZ")
 set(CPACK_SOURCE_PACKAGE_FILE_NAME
   "${CMAKE_PROJECT_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}")
