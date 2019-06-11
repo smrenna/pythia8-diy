@@ -7,8 +7,8 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-set(CMAKE_CXX_FLAGS "-Wall -Wextra")
-#set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS "-Wall -ggdb")# -fPermissive")
+set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 set(CMAKE_CXX_STANDARD 11)
@@ -82,6 +82,7 @@ include_directories         (${CMAKE_CURRENT_SOURCE_DIR}/include
 			    			${YODA_DIR}/include
                             ${HEPMC_DIR}/include
                             ${RIVET_DIR}/include
+                            ${HIGHFIVE_DIR}/include 
                             ${PYTHIA8_DIR}/include
 							${FASTJETS_DIR}/include
                             #SYSTEM ${MPI_INCLUDE_PATH}
@@ -104,9 +105,13 @@ set                         (libraries
                              ${HEPMC_DIR}/lib/libHepMC${CMAKE_SHARED_LIBRARY_SUFFIX}
                              ${PYTHIA8_DIR}/lib/libpythia8${CMAKE_SHARED_LIBRARY_SUFFIX}
 							 ${FASTJETS_DIR}/lib/libfastjet${CMAKE_SHARED_LIBRARY_SUFFIX}
-                             ${CMAKE_THREAD_LIBS_INIT}
+							 ### ${CMAKE_THREAD_LIBS_INIT}
                              )
 
+# Test if user has supplied -DHIGHFIVE_DIR                        
+if (NOT HIGHFIVE_DIR)
+    message                 (FATAL_ERROR " Need HighFive in order to build program --- check -DHIGHFIVE_DIR")
+endif                       ()
 
 # Test if libs are found
 find_library(YODA_LIB
@@ -139,6 +144,13 @@ find_library(PYTHIA8_LIB
     )
 if(NOT PYTHIA8_LIB)
     message(FATAL_ERROR "PYTHIA8 library not found --- check -DPYTHIA8_DIR")
+endif()
+find_library(FASTJET_LIB
+    NAMES libfastjet${CMAKE_SHARED_LIBRARY_SUFFIX}
+    HINTS "${FASTJET_DIR}/lib"
+    )
+if(NOT FASTJET_LIB)
+    message(FATAL_ERROR "FASTJET library not found --- check -DFASTJET_DIR")
 endif()
 
 # If all found, add build target
@@ -175,13 +187,13 @@ else                        ()
 endif                       ()
 
 set(CPACK_PACKAGE_VERSION_MAJOR "0")
-set(CPACK_PACKAGE_VERSION_MINOR "1")
-set(CPACK_PACKAGE_VERSION_PATCH "2")
+set(CPACK_PACKAGE_VERSION_MINOR "7")
+set(CPACK_PACKAGE_VERSION_PATCH "1")
 set(CPACK_SOURCE_GENERATOR "TGZ")
 set(CPACK_SOURCE_PACKAGE_FILE_NAME
   "${CMAKE_PROJECT_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}")
 set(CPACK_SOURCE_IGNORE_FILES
-    "Docker;.git;~;build;${CPACK_SOURCE_IGNORE_FILES}")
+    "Docker;benchmark;test;.git;~;build;${CPACK_SOURCE_IGNORE_FILES}")
 include(CPack)
 
 add_custom_target(dist COMMAND ${CMAKE_MAKE_PROGRAM} package_source)

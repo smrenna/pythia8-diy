@@ -10,34 +10,6 @@
 
 using namespace std;
 
-namespace {
-
-  typedef std::vector<float> Weights;
-
-  size_t calc_sum(PointConfigs const& pcc, Weights const& tw)
-  {
-    size_t w_event_total = 0;
-    for(size_t i=0;i<pcc.size();++i)
-      w_event_total += ceil(tw[i] * pcc[i].num_events);
-    return w_event_total;
-  }
-  
-  std::vector<size_t> calc_portions(size_t total_w_events,
-				    float weight_total,
-				    size_t total_blocks,
-				    Weights const& w)
-  {
-    std::vector<size_t> portions;
-    
-    for(auto& it : w)
-      {
-	auto tmp = round(it/weight_total * (float)total_blocks);
-	portions.push_back( tmp );
-      }
-    return portions;
-  }
-
-}
 
 // This function calculates how many blocks we need to accumulate
 // the desired number of events given number of available ranks
