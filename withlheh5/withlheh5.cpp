@@ -52,22 +52,34 @@ using namespace lheh5;
 
 class LHAupH5 : public Pythia8::LHAup {
   public:
-    LHAupH5( HighFive::File* file_, size_t firstEvent, size_t readSize, size_t nTotal, bool verbose=false) : _numberRead(0),  _sumW(0) {
+    LHAupH5( HighFive::File* file_, size_t firstEvent, size_t readSize, size_t nTotal, bool verbose=false, bool readNTrials=true, bool noRead=false) : _numberRead(0),  _sumW(0) {
       file = file_;
       _index       = file->getGroup("index");
       _particle    = file->getGroup("particle");
       _event       = file->getGroup("event");
       _init        = file->getGroup("init");
       _procInfo    = file->getGroup("procInfo");
+      _readSize = readSize;
+      _noRead=noRead;
       // This reads and holds the information of readSize events, starting from firstEvent
       setInit();
-      lheevents = lheh5::readEvents(_index, _particle, _event, firstEvent, readSize);
-      // Sum of trials for ALL to be processed events!!!
-      DataSet _trials     =  _event.getDataSet("trials");
-      std::vector<size_t>    _vtrials;
-      _trials    .select({0}, {nTotal}).read(_vtrials);
-      _nTrials = std::accumulate(_vtrials.begin(), _vtrials.end(), 0.0);
-      fmt::print(stderr, "sum trials {}\n", _nTrials);
+      if (noRead){
+         lheevents = lheh5::readEvents(_index, _particle, _event, firstEvent, 1);
+      }
+      else {
+         lheevents = lheh5::readEvents(_index, _particle, _event, firstEvent, readSize);
+      }
+      if (readNTrials) {
+         // Sum of trials for ALL to be processed events!!!
+         DataSet _trials     =  _event.getDataSet("trials");
+         std::vector<size_t>    _vtrials;
+         _trials    .select({0}, {nTotal}).read(_vtrials);
+         _nTrials = std::accumulate(_vtrials.begin(), _vtrials.end(), 0.0);
+      }
+      // This is for measurement only
+      else {
+         _nTrials = 100;
+      }
     }
     
     // Read and set the info from init and procInfo
@@ -87,6 +99,8 @@ class LHAupH5 : public Pythia8::LHAup {
     size_t                                     _numberRead;
     size_t                                     _nTrials;
     double                                  _sumW;
+    bool                                  _noRead;
+    size_t                                _readSize;
 
     // Flag to set particle production scales or not.
     LHAscales scalesNow;
@@ -156,11 +170,16 @@ bool LHAupH5::setEvent(int idProc)
   scalupSave = eHeader.scale; // TODO which scale?
   aqedupSave = eHeader.aqed;
   aqcdupSave = eHeader.aqcd;
-
+  std::vector<lheh5::Particle> particles;
   double scalein = -1.;
 
   // TEMPorary hack for mothers not being set in Sherpa
-  std::vector<lheh5::Particle> particles = lheevents.mkEvent( _numberRead );
+  if (_noRead) {
+     particles = lheevents.mkEvent( 0 );
+  }
+  else {
+     particles = lheevents.mkEvent( _numberRead );
+  }
 
   for (unsigned int ip=0;ip< particles.size(); ++ip) {
      lheh5::Particle part = particles[ip];
@@ -210,6 +229,181 @@ void print_block(Block* b,                             // local block
       fmt::print(stderr, "[{}]: {} ", cp.gid(), s);
    }
    fmt::print(stderr, "\n");
+}
+void process_block_lhe_performance_same(Block* b, diy::Master::ProxyWithLink const& cp, int size, int rank,  bool verbose, int npc, string in_file, int nMax)
+{
+  // Minimise pythia's output
+  //b->pythia.readString("Print:quiet = on");
+
+  // Configure pythia with a vector of strings
+  for (auto s  : b->state.conf) b->pythia.readString(s);
+  // Py8 random seed for this block read from point config
+  b->pythia.readString("Random:setSeed = on");
+  b->pythia.readString("Random:seed = " + std::to_string(b->state.seed));
+  // TODO seed mode 3, i.e. draw nrank random numbers
+
+  HighFive::File file(in_file, HighFive::File::ReadOnly);  
+  hid_t dspace = H5Dget_space(file.getDataSet("index/start").getId());
+  
+  size_t eventOffset = 0;
+  
+  // Create an LHAup object that can access relevant information in pythia.
+  LHAupH5* LHAup = new LHAupH5( &file , eventOffset, nMax, nMax, verbose, true, true);
+
+  b->pythia.settings.mode("Beams:frameType", 5);
+  // Give the external reader to Pythia
+  b->pythia.setLHAupPtr(LHAup);
+
+   // hier unlops zeug
+   // Allow to set the number of addtional partons dynamically. TODO here important
+  HardProcessBookkeeping* hardProcessBookkeeping = NULL;
+  int scheme = ( b->pythia.settings.flag("Merging:doUMEPSTree")
+              || b->pythia.settings.flag("Merging:doUMEPSSubt")) ?
+              1 :
+               ( ( b->pythia.settings.flag("Merging:doUNLOPSTree")
+              || b->pythia.settings.flag("Merging:doUNLOPSSubt")
+              || b->pythia.settings.flag("Merging:doUNLOPSLoop")
+              || b->pythia.settings.flag("Merging:doUNLOPSSubtNLO")) ?
+              2 :
+              0 );
+  HardProcessBookkeeping* hardProcessBookkeepingPtr
+    = new HardProcessBookkeeping(scheme);
+
+  b->pythia.setUserHooksPtr(hardProcessBookkeepingPtr);
+
+  double sigmaTotal  = 0.;
+  double errorTotal  = 0.;
+  double xs = 0.;
+  for (int i=0; i < b->pythia.info.nProcessesLHEF(); ++i)
+    xs += b->pythia.info.sigmaLHEF(i);
+  if (verbose) fmt::print(stderr, "[{}] xs: {}\n", cp.gid(), xs);
+  double sigmaSample = 0., errorSample = 0.; // NOTE in Stefan's unlops this is reset for each to be merged multi
+
+  b->pythia.readString("Merging:unlopsTMSdefinition = 1");
+  int unlopsType = b->pythia.settings.mode("Merging:unlopsTMSdefinition");
+
+   MergingHooks* ptjTMSdefinitionPtr = (unlopsType<0)
+    ? NULL
+    : new PtjTMSdefinitionHooks(b->pythia.parm("Merging:TMS"),6.0);
+  if (unlopsType >0) b->pythia.setMergingHooksPtr( ptjTMSdefinitionPtr );
+
+  // All configurations done, initialise Pythia
+  b->pythia.init();
+
+
+  if (verbose) fmt::print(stderr, "[{}] starting event loop\n", cp.gid());
+  // The event loop
+  int nAbort = 5;
+  int iAbort = 0;
+  if (verbose)  fmt::print(stderr, "[{}] generating  {} events\n", cp.gid(),  LHAup->getSize());
+  for (size_t iEvent = 0; iEvent < nMax; ++iEvent) {
+    if (verbose) fmt::print(stderr, "[{}] is at event {}\n", cp.gid(), iEvent);
+    if (!b->pythia.next()) {
+       // Gracefully ignore events with 0 weight
+       if (LHAup->weight() == 0) {
+          if (verbose) fmt::print(stderr, "[{}] encounters and ignores event {} as it has zero weight\n", cp.gid(), iEvent);
+          continue;
+       }
+       else {
+          if (++iAbort < nAbort) continue; // All other errors contribute to the abort counter
+       }
+      break;
+    }
+    //LHAup->listEvent();
+    if (verbose ) LHAup->listEvent();
+  }
+
+  delete hardProcessBookkeepingPtr;
+  if (unlopsType>0) delete ptjTMSdefinitionPtr;
+}
+void process_block_lhe_performance(Block* b, diy::Master::ProxyWithLink const& cp, int size, int rank,  bool verbose, int npc, string in_file, int nMax)
+{
+  // Minimise pythia's output
+  b->pythia.readString("Print:quiet = on");
+
+  // Configure pythia with a vector of strings
+  for (auto s  : b->state.conf) b->pythia.readString(s);
+  // Py8 random seed for this block read from point config
+  b->pythia.readString("Random:setSeed = on");
+  b->pythia.readString("Random:seed = " + std::to_string(b->state.seed+cp.gid()));
+  // TODO seed mode 3, i.e. draw nrank random numbers
+
+  HighFive::File file(in_file, HighFive::File::ReadOnly);  
+  hid_t dspace = H5Dget_space(file.getDataSet("index/start").getId());
+  size_t nEvents  =  H5Sget_simple_extent_npoints(dspace);
+  if (nMax > 0 && nMax < nEvents) {
+     nEvents = nMax;
+  }
+  size_t ev_rank = floor(nEvents/size);
+  size_t eventOffset = rank*ev_rank;
+  
+  // Create an LHAup object that can access relevant information in pythia.
+  LHAupH5* LHAup = new LHAupH5( &file , eventOffset, ev_rank, nEvents, verbose);
+
+  b->pythia.settings.mode("Beams:frameType", 5);
+  // Give the external reader to Pythia
+  b->pythia.setLHAupPtr(LHAup);
+
+   // hier unlops zeug
+   // Allow to set the number of addtional partons dynamically. TODO here important
+  HardProcessBookkeeping* hardProcessBookkeeping = NULL;
+  int scheme = ( b->pythia.settings.flag("Merging:doUMEPSTree")
+              || b->pythia.settings.flag("Merging:doUMEPSSubt")) ?
+              1 :
+               ( ( b->pythia.settings.flag("Merging:doUNLOPSTree")
+              || b->pythia.settings.flag("Merging:doUNLOPSSubt")
+              || b->pythia.settings.flag("Merging:doUNLOPSLoop")
+              || b->pythia.settings.flag("Merging:doUNLOPSSubtNLO")) ?
+              2 :
+              0 );
+  HardProcessBookkeeping* hardProcessBookkeepingPtr
+    = new HardProcessBookkeeping(scheme);
+
+  b->pythia.setUserHooksPtr(hardProcessBookkeepingPtr);
+
+  double sigmaTotal  = 0.;
+  double errorTotal  = 0.;
+  double xs = 0.;
+  for (int i=0; i < b->pythia.info.nProcessesLHEF(); ++i)
+    xs += b->pythia.info.sigmaLHEF(i);
+  if (verbose) fmt::print(stderr, "[{}] xs: {}\n", cp.gid(), xs);
+  double sigmaSample = 0., errorSample = 0.; // NOTE in Stefan's unlops this is reset for each to be merged multi
+
+  b->pythia.readString("Merging:unlopsTMSdefinition = 1");
+  int unlopsType = b->pythia.settings.mode("Merging:unlopsTMSdefinition");
+
+   MergingHooks* ptjTMSdefinitionPtr = (unlopsType<0)
+    ? NULL
+    : new PtjTMSdefinitionHooks(b->pythia.parm("Merging:TMS"),6.0);
+  if (unlopsType >0) b->pythia.setMergingHooksPtr( ptjTMSdefinitionPtr );
+
+  // All configurations done, initialise Pythia
+  b->pythia.init();
+
+
+  if (verbose) fmt::print(stderr, "[{}] starting event loop\n", cp.gid());
+  // The event loop
+  int nAbort = 5;
+  int iAbort = 0;
+  if (verbose)  fmt::print(stderr, "[{}] generating  {} events\n", cp.gid(),  LHAup->getSize());
+  for (size_t iEvent = 0; iEvent < LHAup->getSize(); ++iEvent) {
+    if (verbose) fmt::print(stderr, "[{}] is at event {}\n", cp.gid(), iEvent);
+    if (!b->pythia.next()) {
+       // Gracefully ignore events with 0 weight
+       if (LHAup->weight() == 0) {
+          if (verbose) fmt::print(stderr, "[{}] encounters and ignores event {} as it has zero weight\n", cp.gid(), iEvent);
+          continue;
+       }
+       else {
+          if (++iAbort < nAbort) continue; // All other errors contribute to the abort counter
+       }
+      break;
+    }
+    if (verbose ) LHAup->listEvent();
+  }
+
+  delete hardProcessBookkeepingPtr;
+  if (unlopsType>0) delete ptjTMSdefinitionPtr;
 }
 
 //void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> physConfig, std::vector<std::string> analyses, bool verbose)
@@ -312,7 +506,14 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
        if (verbose) b->pythia.stat();
        if (verbose) LHAup->listEvent();
 
-      if (++iAbort < nAbort) continue; // TODO investigate influenec of apbort on sum trials
+       // Gracefully ignore events with 0 weight
+       if (LHAup->weight() == 0) {
+          if (verbose) fmt::print(stderr, "[{}] encounters and ignores event {} as it has zero weight\n", cp.gid(), iEvent);
+          continue;
+       }
+       else {
+          if (++iAbort < nAbort) continue; // All other errors contribute to the abort counter
+       }
       break;
     }
     //if (verbose && iEvent < 2 ) LHAup->listEvent();
@@ -403,13 +604,17 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
       double sc = std::stod(ao->annotation("ScaledBy"));
       if (ao->type()=="Histo1D")
       {
-         dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
-         //dynamic_cast<YODA::Histo1D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+         if (sc>0) {
+            dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
+            //dynamic_cast<YODA::Histo1D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+         }
       }
       else if (ao->type()=="Histo2D")
       {
-         dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
-         //dynamic_cast<YODA::Histo2D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+         if (sc>0) {
+            dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
+            //dynamic_cast<YODA::Histo2D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+         }
       }
     }
   }
@@ -431,11 +636,15 @@ void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int rank, bool v
         double sc = std::stod(ao->annotation("ScaledBy"));
         if (ao->type()=="Histo1D")
         {
+         if (sc>0) {
            dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
+         }
         }
         else if (ao->type()=="Histo2D")
         {
+         if (sc>0) {
            dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
+         }
         }
       }
     }
@@ -465,6 +674,7 @@ int main(int argc, char* argv[])
 
     size_t nBlocks = 0;
     int threads = 1;
+    int runmode = 0;
     int nEvents=1000;
     size_t seed=1234;
     vector<std::string> analyses;
@@ -480,6 +690,7 @@ int main(int argc, char* argv[])
                                                            "verbose output");
     ops >> Option('t', "thread",    threads,   "Number of threads");
     ops >> Option('n', "nevents",   nEvents,   "Number of events to generate in total");
+    ops >> Option('m', "runmode",   runmode,   "Runmode - 0 normal, 1 means performance");
     ops >> Option('b', "nblocks",   nBlocks,   "Number of blocks");
     ops >> Option('a', "analysis",  analyses,  "Rivet analyses --- can be given multiple times");
     ops >> Option('o', "output",    out_file,  "Output filename.");
@@ -567,8 +778,16 @@ int main(int argc, char* argv[])
       fmt::print(stderr, "\n    Physics configurations:  {}\n", nConfigs);
       fmt::print(stderr, "\n    Number of events/config: {}\n", nEvents);
       fmt::print(stderr, "\n    Total number of events:  {}\n", nEvents*nConfigs);
+      if (runmode==1) {
+         fmt::print(stderr, "\n  P E R F O R M A N C E  \n");
+      }
+      if (runmode==2) {
+         fmt::print(stderr, "\n  P E R F O R M A N C E S A M E \n");
+      }
       fmt::print(stderr, "***********************************\n");
     }
+
+    double starttime, endtime;
 
     PointConfig pc;
     for (size_t ipc=0;ipc<nConfigs;++ipc) {
@@ -586,22 +805,47 @@ int main(int argc, char* argv[])
        if (verbose) master.foreach([world](Block* b, const diy::Master::ProxyWithLink& cp)
                         {print_block(b, cp, world.rank()); });
 
-       master.foreach([world, verbose, ipc, in_file, nEvents](Block* b, const diy::Master::ProxyWithLink& cp)
-                        {process_block_lhe(b, cp, world.size(), world.rank(), verbose, ipc, in_file, nEvents); });
+       if (runmode==1) {
+         std::streambuf *old = cout.rdbuf();
+         stringstream ss;
+         cout.rdbuf (ss.rdbuf());
+         starttime = MPI_Wtime();
+         master.foreach([world, verbose, ipc, in_file, nEvents](Block* b, const diy::Master::ProxyWithLink& cp)
+                           {process_block_lhe_performance(b, cp, world.size(), world.rank(), verbose, ipc, in_file, nEvents); });
+         endtime   = MPI_Wtime(); 
+         cout.rdbuf (old);
+         printf("[%i] took %.3f seconds\n",world.rank(), endtime-starttime);
+       }
+       else if (runmode==2) {
+         //std::streambuf *old = cout.rdbuf();
+         //stringstream ss;
+         //cout.rdbuf (ss.rdbuf());
+         starttime = MPI_Wtime();
+         master.foreach([world, verbose, ipc, in_file, nEvents](Block* b, const diy::Master::ProxyWithLink& cp)
+                           {process_block_lhe_performance_same(b, cp, world.size(), world.rank(), verbose, ipc, in_file, nEvents); });
+         endtime   = MPI_Wtime(); 
+         //cout.rdbuf (old);
+         printf("[%i] took %.3f seconds\n",world.rank(), endtime-starttime);
+       }
+       else {
+
+          master.foreach([world, verbose, ipc, in_file, nEvents](Block* b, const diy::Master::ProxyWithLink& cp)
+                           {process_block_lhe(b, cp, world.size(), world.rank(), verbose, ipc, in_file, nEvents); });
 
 
-       diy::reduce(master,              // Master object
-                   assigner,            // Assigner object
-                   partners,            // RegularMergePartners object
-                   &reduceData<Block>);
+          diy::reduce(master,              // Master object
+                      assigner,            // Assigner object
+                      partners,            // RegularMergePartners object
+                      &reduceData<Block>);
 
-       //////This is where the write out happens --- the output file name is part of the blocks config
-       master.foreach([world, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
-                      { write_yoda(b, cp, world.rank(), verbose); });
+          //////This is where the write out happens --- the output file name is part of the blocks config
+          master.foreach([world, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
+                         { write_yoda(b, cp, world.rank(), verbose); });
 
-       // Wipe the buffer to prevent double counting etc.
-       master.foreach([world, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
-                      { clear_buffer(b, cp, verbose); });
+          // Wipe the buffer to prevent double counting etc.
+          master.foreach([world, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
+                         { clear_buffer(b, cp, verbose); });
+       }
    }
 
 

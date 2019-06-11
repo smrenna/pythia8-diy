@@ -16,3 +16,11 @@ install(TARGETS pythia8-diy
     DESTINATION ${CMAKE_INSTALL_PREFIX/bin}
     RUNTIME DESTINATION bin
     )
+
+add_executable              (pythia8-diy-wcalib pythia8-diy-wcalib.cpp)
+
+target_link_libraries (pythia8-diy-wcalib LINK_PUBLIC ${libraries} diygen)
+install(TARGETS pythia8-diy-wcalib
+    DESTINATION ${CMAKE_INSTALL_PREFIX/bin}
+    RUNTIME DESTINATION bin
+    )
