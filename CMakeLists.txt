@@ -39,7 +39,7 @@ if                          (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 endif                       (${CMAKE_SYSTEM_NAME} MATCHES      "Darwin")
 
  # MPI
- #find_package                (MPI REQUIRED)
+ # find_package                (MPI REQUIRED)
  #   set                     (libraries ${libraries} ${MPI_C_LIBRARIES} ${MPI_CXX_LIBRARIES})
 
 find_package                (HDF5)
@@ -85,7 +85,8 @@ include_directories         (${CMAKE_CURRENT_SOURCE_DIR}/include
                             ${HIGHFIVE_DIR}/include 
                             ${PYTHIA8_DIR}/include
 							${FASTJETS_DIR}/include
-                            #SYSTEM ${MPI_INCLUDE_PATH}
+							${HDF5_C_INCLUDE_DIR}
+                            SYSTEM ${MPI_INCLUDE_PATH}
                             )
 
 # Figure out correct library suffix
@@ -145,12 +146,12 @@ find_library(PYTHIA8_LIB
 if(NOT PYTHIA8_LIB)
     message(FATAL_ERROR "PYTHIA8 library not found --- check -DPYTHIA8_DIR")
 endif()
-find_library(FASTJET_LIB
+find_library(FASTJETS_LIB
     NAMES libfastjet${CMAKE_SHARED_LIBRARY_SUFFIX}
-    HINTS "${FASTJET_DIR}/lib"
+	HINTS "${FASTJETS_DIR}/lib"
     )
-if(NOT FASTJET_LIB)
-    message(FATAL_ERROR "FASTJET library not found --- check -DFASTJET_DIR")
+if(NOT FASTJETS_LIB)
+	message(FATAL_ERROR "FASTJETS library not found --- check -DFASTJETS_DIR")
 endif()
 
 # If all found, add build target
@@ -158,7 +159,7 @@ add_subdirectory        (src)
 
 
 ## Test if user has supplied -DHIGHFIVE_DIR                        
-if                          (LHEH5_DIR AND HIGHFIVE_DIR)
+if  (LHEH5_DIR AND HIGHFIVE_DIR)
     message("Configuring to build lhd hdf5 support")
     set                         (libraries
         ${libraries}
@@ -177,11 +178,11 @@ if                          (LHEH5_DIR AND HIGHFIVE_DIR)
         NAMES H5File.hpp
         HINTS "${HIGHFIVE_DIR}/include/highfive" 
         )
-    if(NOT HAVE_H5_H)
-        message(FATAL_ERROR "Specified HighFive dir not found --- check -DHIGHFIVE_DIR")
-    endif()
+	if(NOT HAVE_H5_H)
+	    message(FATAL_ERROR "Specified HighFive dir not found --- check -DHIGHFIVE_DIR")
+	endif()
 
-    add_subdirectory        (withlheh5)
+	add_subdirectory        (withlheh5)
 else                        ()
     message                 (INFO " Need LHEH5 and HighFive in order to build lhehdf program")
 endif                       ()

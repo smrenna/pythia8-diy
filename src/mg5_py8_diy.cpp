@@ -99,12 +99,15 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose
 	// TODO: can we have a global flag to steer verbosity of all moving parts?
 	if (!verbose) Rivet::Log::setLevel("Rivet", Rivet::Log::ERROR);
 
+	// Explicit desctruction and recreation of pythia --- this is important when running multiple
+	// physics configs!!! https://stackoverflow.com/questions/1124634/call-destructor-and-then-constructor-resetting-an-object
+	(&b->pythia)->~Pythia();
+	new (&b->pythia) Pythia();
 	// Minimise pythia's output
-	b->pythia.readString("Print:quiet = on");
-	/**
+
 	if (verbose) b->pythia.readString("Print:quiet = off");
 	else b->pythia.readString("Print:quiet = on");
-	***/
+
 
 
 
@@ -166,7 +169,9 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose
 
 
 	// Update Rivet simulation
-	b->ah->setSimulationFile(b->state.detector_conf.c_str());
+	if (b->state.detector_conf != "") {
+		b->ah->setSimulationFile(b->state.detector_conf.c_str());
+	}
 
 	// The event loop
 	// int nAbort = b->pythia.mode("Main:timesAllowErrors");
@@ -175,23 +180,20 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose
 
 	int iAbort = 0;
 	if (verbose) fmt::print(stderr, "[{}] generating {} events\n", cp.gid(),  b->state.num_events);
-	int iEvent = 0;
-	while (iEvent < b->state.num_events) {
+    for (unsigned int iEvent = 0; iEvent < b->state.num_events; ++iEvent) {
 		if (!b->pythia.next()) {
 			if (++iAbort < nAbort) continue;
 			break;
 		}
 		HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
-
-		b->ToHepMC.fill_next_event( b->pythia, hepmcevt);
+		b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
 
 		try {b->ah->analyze( *hepmcevt ) ;} catch (const std::exception& e)
 		{
 			if (verbose) fmt::print(stderr, "[{}] exception in analyze: {}\n", cp.gid(), e.what());
 		}
 		delete hepmcevt;
-		if (iEvent%1000 == 0) fmt::print(stderr, "[{}]  {}/{} \n", cp.gid(),  iEvent, b->state.num_events);;
-		iEvent ++;
+		if (iEvent%1000 == 0 && cp.gid()==0) fmt::print(stderr, "[{}]  {}/{} \n", cp.gid(),  iEvent, b->state.num_events);;
 	}
 	if (verbose) fmt::print(stderr, "[{}] finished generating {} events\n", cp.gid(),  b->state.num_events);
 
@@ -237,7 +239,7 @@ void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int nConfigs, bo
 	if (cp.gid() > nConfigs - 1 ) return;
 
 	for (auto ao : b->buffer) {
-		if (ao->hasAnnotation("OriginalScaledBy"))
+		if (ao && ao->hasAnnotation("OriginalScaledBy"))
 		{
 			double sc = std::stod(ao->annotation("OriginalScaledBy"));
 			if (ao->type()=="Histo1D")
@@ -250,7 +252,7 @@ void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int nConfigs, bo
 			}
 		}
 	}
-	fmt::print(stderr, "[{}] -- writing to file {}  \n", cp.gid(), b->state.f_out);
+	if (verbose) fmt::print(stderr, "[{}] -- writing to file {}  \n", cp.gid(), b->state.f_out);
 	YODA::WriterYODA::write(b->state.f_out, b->buffer);
 }
 
@@ -260,22 +262,15 @@ void clear_buffer(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
 	b->buffer.clear();
 }
 
-void set_pc(Block* b,                             // local block
-		const diy::Master::ProxyWithLink& cp, // communication proxy
-		PointConfig pc)                         // user-defined additional arguments
-{
-	if (cp.gid() == 0) b->state = pc;
-}
-
 // --- main program ---//
 int main(int argc, char* argv[])
 {
-	// fmt::print(stderr, "{} STARTED\n", argv[0]);
 	auto start = std::chrono::system_clock::now();
 	diy::mpi::environment env(argc, argv);
 	diy::mpi::communicator world;
 
 	int threads = 1;
+    int runnum = -1;
 	int nEvents=1000;
 	size_t seed=1234;
 	int evts_per_block_in = -1;
@@ -283,7 +278,7 @@ int main(int argc, char* argv[])
 	std::string out_file="diy.yoda";
 	std::string pfile="runPythia.cmd";
 	std::string dfile="detector_config.yoda";
-	std::string indir=".";
+	std::string indir="";
 	std::string mfile = "mg5.cmd";
 	int dim(2); // 2-d blocks, 3-d do not work for now! 
 
@@ -300,8 +295,9 @@ int main(int argc, char* argv[])
 	ops >> Option('s', "seed",      seed,      "The Base seed --- this is incremented for each block.");
 	ops >> Option('p', "pfile",     pfile,     "Parameter config file for testing __or__ input file name to look for in directory.");
 	ops >> Option('d', "dfile",     dfile,     "detector config file for testing __or__ input file name to look for in directory.");
+	ops >> Option('i', "indir",     indir,     "Input directory with hierarchical pfiles");
+    ops >> Option('r', "runnum",    runnum,    "Use only runs ending runnum");
 	ops >> Option('m', "mfile",     mfile,     "MadGraph5 config file for testing __or__ input file name to look for in directory.");
-	ops >> Option('i', "indir",     indir,     "Input directory with hierarchical configuration files");
 	ops >> Option(     "evtsPerBlock",     evts_per_block_in,     "Events per block");
 	// ops >> Option(       "dim",     dim,     "dimension");
 	if (ops >> Present('h', "help", "Show help"))
@@ -322,8 +318,16 @@ int main(int argc, char* argv[])
 		f_ok = readConfig(pfile, physConfig, verbose);
 		if (!f_ok) {
 			// Use glob to look for files in directory
-			for (auto f : glob(indir + "/*/" + pfile)) {
-				nConfigs ++;
+			std::string pattern = indir + "/*/" + pfile;
+			if (runnum >=0) {
+             	pattern =  indir + "/*" + std::to_string(runnum) + "/" + pfile;
+			}
+			for (auto f : glob(pattern)) {
+				physConfig.clear();
+				bool this_ok = readConfig(f, physConfig, verbose);
+				if (this_ok) {
+					nConfigs ++; 
+				}
 			}
 		}
 		else {
@@ -333,6 +337,8 @@ int main(int argc, char* argv[])
 
 	MPI_Bcast(&nConfigs,   1, MPI_INT, 0, world);
 
+	// number of events per block is inferred from total number of events and events per block
+	// Taking advantage of DIY being able to map any number of blacks to available CPU resources
 	const int MINIMUM_NUMBER_EVENTS = 2000; // each block at least generates 2000 events
 	int evts_per_block = (evts_per_block_in > 1)? evts_per_block_in: MINIMUM_NUMBER_EVENTS;
 	size_t num_universes = ceil(nEvents/evts_per_block);
@@ -351,7 +357,9 @@ int main(int argc, char* argv[])
 	// set global data bounds
 	Bounds domain;
 	for(auto i = 0; i < dim -1; i++){
-		domain.min[i] = 0; domain.max[i] = nConfigs; // later on can be used to identify different physics processes.
+		domain.min[i] = 0;
+		// Used to identify number of configurations.
+		domain.max[i] = nConfigs; 
 	}
 	// number of blocks used to produce the events of the same physics and configuration
 	domain.min[dim-1] = 0; domain.max[dim-1] = num_universes;   
@@ -378,6 +386,7 @@ int main(int argc, char* argv[])
 		// fmt::print(stderr, "\n    MadGraph configurations:  {}\n", mg5Configs.size());
 		fmt::print(stderr, "***********************************\n");
 	}
+
 
 	// whether faces are shared in each dimension; uninitialized values default to false
 	diy::RegularDecomposer<Bounds>::BoolVector          share_face(dim);
@@ -474,7 +483,7 @@ int main(int argc, char* argv[])
 
 	if (verbose) master.foreach([verbose](Block* b, const diy::Master::ProxyWithLink& cp)
 			{print_block(b, cp, verbose); });
-/***
+
 	master.foreach([world, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
 			{process_block(b, cp, verbose); });
 
@@ -495,14 +504,14 @@ int main(int argc, char* argv[])
 	// Wipe the buffer to prevent double counting etc.
 	master.foreach([world, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
 			{ clear_buffer(b, cp, verbose); });
-**/
-	// auto end = std::chrono::system_clock::now();
-	// std::chrono::duration<double> diff = end - start;
+
+	auto end = std::chrono::system_clock::now();
+	std::chrono::duration<double> diff = end - start;
 	if(world.rank() == 0) {
 		std::time_t tttt = std::time(nullptr);
 		fmt::print(stderr, "FINISHED on Local Time: {} \n",
 				std::put_time(std::localtime(&tttt), "%c %Z") );
 	}
-	// fmt::print(stderr, "{} FINISHED, Takes {} minutes\n", argv[0], diff.count()/60);
+	fmt::print(stderr, "{} FINISHED, Takes {} minutes\n", argv[0], diff.count()/60);
 	return 0;
 }

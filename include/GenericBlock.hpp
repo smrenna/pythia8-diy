@@ -108,7 +108,7 @@ struct GenericBlock
 	  if (cp.gid() > nConfigs - 1) return;
 
 	  string dir;
-	  if(nConfigs > 1) {
+	  if(indir != ""){
 		// int dim = bounds.min.size();
 		// if(dim < 2) throw(std::out_of_range("at least 2 dimensions"));
 		// int config_idx = (int) bounds.min[dim-2];
@@ -120,48 +120,38 @@ struct GenericBlock
 				bounds.max[0], bounds.max[1], bounds.max[2]);
 		dir = indir +"/"+ dir_name(config_idx);
 	  } else {
-		 dir = indir; 
+		 dir = "."; 
 	  }
-	  create_state(dir, nEvents, seed, pythia_conf, analyses, f_out, detector_conf, mg5_conf, verbose);
-  }
-
-  void create_state(
-		  std::string& indir,
-		  int nEvents,
-		  int seed,
-		  std::string& pythia_conf, 
-		  std::vector<std::string>& analyses,
-		  std::string& f_out,
-		  std::string& detector_conf, 
-		  std::string& mg5_conf, 
-		  bool verbose
-		  )
-  {
 	  bool f_ok;
 
 	  if(verbose) {
-		fmt::print(stderr, "reading directory {}\n", indir);
+		fmt::print(stderr, "reading directory {}\n", dir);
 	  }
 	  std::vector<std::string> physConfig;
 	  physConfig.clear();
-	  f_ok = readConfig(indir+"/"+pythia_conf, physConfig,  verbose);
-	  if(!f_ok) throw(std::system_error(ENOENT, std::iostream_category(), indir+"/"+pythia_conf));	
+	  f_ok = readConfig(dir+"/"+pythia_conf, physConfig,  verbose);
+	  if(!f_ok) throw(std::system_error(ENOENT, std::iostream_category(), dir+"/"+pythia_conf));	
 
 
 	  std::vector<std::string> mg5Config;
 	  mg5Config.clear();
-	  bool use_mg5 = readConfig(indir+"/"+mg5_conf, mg5Config,  verbose);
+	  bool use_mg5 = readConfig(dir+"/"+mg5_conf, mg5Config,  verbose);
 
-	  state = {1, nEvents, seed, 1, physConfig, analyses, indir+"/"+f_out, indir+"/"+detector_conf, mg5Config, use_mg5};
+      if (detector_conf != "") {
+		  state = {1, nEvents, seed, 1, physConfig, analyses, dir+"/"+f_out, dir+"/"+detector_conf, mg5Config, use_mg5};
+	  } else {
+		  state = {1, nEvents, seed, 1, physConfig, analyses, dir+"/"+f_out, "", mg5Config, use_mg5};
+	  }
+
 	  if(verbose) std::cout << state << std::endl;
+
   }
 
-  
   void gen_mg5_gridpack(
 		  const diy::Master::ProxyWithLink& cp,
 		  int nConfigs,
 		  bool verbose
-		  ) 
+		  )
   {
 	  if(cp.gid() > nConfigs - 1) return;
 	  if(! state.use_mg5) return;
