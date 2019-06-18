@@ -210,8 +210,9 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose
 
 	// This is a bit annoying --- we need to unscale Histo1D and Histo2D beforge the reduction
 	// TODO: Figure out whether this is really necessary
+	/***
 	for (auto ao : b->data) {
-		if (ao->hasAnnotation("ScaledBy"))
+		if (ao && ao->hasAnnotation("ScaledBy"))
 		{
 			double sc = std::stod(ao->annotation("ScaledBy"));
 			if (ao->type()=="Histo1D")
@@ -226,6 +227,7 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose
 			}
 		}
 	}
+	***/
 
 	auto end = std::chrono::system_clock::now();
 	std::chrono::duration<double> diff = end - start;
@@ -237,7 +239,7 @@ void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int nConfigs, bo
 {
 	if (verbose) fmt::print(stderr, "[{}] sees write_yoda \n", cp.gid());
 	if (cp.gid() > nConfigs - 1 ) return;
-
+/***
 	for (auto ao : b->buffer) {
 		if (ao && ao->hasAnnotation("OriginalScaledBy"))
 		{
@@ -252,6 +254,7 @@ void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int nConfigs, bo
 			}
 		}
 	}
+***/
 	if (verbose) fmt::print(stderr, "[{}] -- writing to file {}  \n", cp.gid(), b->state.f_out);
 	YODA::WriterYODA::write(b->state.f_out, b->buffer);
 }
@@ -487,6 +490,8 @@ int main(int argc, char* argv[])
 	master.foreach([world, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
 			{process_block(b, cp, verbose); });
 
+	// make sure all data are written before clear buffers
+	world.barrier();
 
 	diy::reduce(
 			master,              // Master object
@@ -511,7 +516,7 @@ int main(int argc, char* argv[])
 		std::time_t tttt = std::time(nullptr);
 		fmt::print(stderr, "FINISHED on Local Time: {} \n",
 				std::put_time(std::localtime(&tttt), "%c %Z") );
+		fmt::print(stderr, "{} FINISHED, Takes {} minutes\n", argv[0], diff.count()/60);
 	}
-	fmt::print(stderr, "{} FINISHED, Takes {} minutes\n", argv[0], diff.count()/60);
 	return 0;
 }
