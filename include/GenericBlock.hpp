@@ -130,7 +130,8 @@ struct GenericBlock
 	  std::vector<std::string> physConfig;
 	  physConfig.clear();
 	  f_ok = readConfig(dir+"/"+pythia_conf, physConfig,  verbose);
-	  if(!f_ok) throw(std::system_error(ENOENT, std::iostream_category(), dir+"/"+pythia_conf));	
+	  if(!f_ok) 
+		  throw(std::system_error(ENOENT, std::iostream_category(), dir+"/"+pythia_conf));
 
 
 	  std::vector<std::string> mg5Config;
@@ -156,17 +157,50 @@ struct GenericBlock
 	  if(cp.gid() > nConfigs - 1) return;
 	  if(! state.use_mg5) return;
 
+	  string dir(basepath(state.f_out)+"/GridPack");
+	  bool is_grid_there = access((dir+"/bin/generate_events").c_str(), F_OK) != -1;
+	  if(is_grid_there) return;
+
 	  // create gridpack for each configuration!
 	  if(!mg5) {
-		  mg5 = new LHAupMadgraph(&pythia, true, basepath(state.f_out)+"/amcatnlorun", "mg5_aMC");
+		  mg5 = new LHAupMadgraph(&pythia, true, dir, "mg5_aMC");
 	  }
 
-	  //grid pack is already implemented in LHAMadgraph.h@function of launch() l356.
+	  //grid pack is already implemented by LHAMadgraph.h in pythia
+	  //at function of launch() l356.
 	  for(auto s: state.mg5_conf) mg5->readString(s);
-	  mg5->setInit();
+	  mg5->setEvents(state.num_events);
 
+	  if (!mg5->configure()) {
+		  pythia.info.errorMsg("Error from GenericBlock::gen_mg5_gridpack: failed to "
+				  "create the MadGraph configuration");
+		return ;
+	  }
+	  if (!mg5->generate()) {
+		  pythia.info.errorMsg("Error from GenericBlock::gen_mg5_gridpack: failed to "
+				  "generate the MadGraph process");
+		  return ;
+	  }
+
+	  if (!mg5->launchOnly()) {
+		  pythia.info.errorMsg("Error from GenericBlock::gen_mg5_gridpack: failed to "
+				  "launch the MadGraph process");
+		  return ;
+	  }
+	  if(!mg5->amcatnlo) {
+		  // compile the gridpack...
+		  string line("cd "+dir+"; tar -xzf run_gridpack.tar.gz; cd madevent; "
+				  "./bin/compile; ./bin/clean4grid; cd ../; rm run_gridpack.tar.gz; "
+				  "tar czf run_gridpack.tar.gz run.sh madevent; rm -rf run.sh madevent"
+				  );
+		  if(system(line.c_str()) == -1){
+			  pythia.info.errorMsg("GenericBlock::gen_mg5_gridpack: failed compile madevent");
+			  return ;
+		  }
+	  }
+	  delete mg5;
 	  fmt::print(stderr, "[{}] MG5 Finished Init", cp.gid());
-	  
+
 	  return;
   }
 
