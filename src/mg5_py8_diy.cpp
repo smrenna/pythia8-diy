@@ -30,6 +30,7 @@
 #include "Tools.hpp"
 #include "CalcConfig.hpp"
 #include "Serialisation.hpp"
+#include "LHAMadgraphUser.h"
 
 #include "YODA/ReaderYODA.h"
 #include "YODA/WriterYODA.h"
@@ -125,10 +126,10 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose
 
 		// Add MadGraph
 		try{
-			b->mg5 = new LHAupMadgraph(&(b->pythia), true, dir, "mg5_aMC");
+			b->mg5 = new LHAupMadgraphUser(&(b->pythia), true, dir, "mg5_aMC");
 			b->mg5->amcatnlo = amcatnlo;
 		} catch(const std::bad_alloc& e) {
-			fmt::print(stderr, "{} cannot iniatiate LHAupMadgraph\n", cp.gid());
+			fmt::print(stderr, "{} cannot iniatiate LHAupMadgraphUser\n", cp.gid());
 			return;
 		}
 
