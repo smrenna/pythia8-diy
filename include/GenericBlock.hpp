@@ -169,7 +169,8 @@ struct GenericBlock
 	  //grid pack is already implemented by LHAMadgraph.h in pythia
 	  //at function of launch() l356.
 	  for(auto s: state.mg5_conf) mg5->readString(s);
-	  mg5->setEvents(state.num_events);
+	  // Since this is to create gridpack only, use larget number of events for "survey".
+	  mg5->setEvents(10000);
 
 	  if (!mg5->configure()) {
 		  pythia.info.errorMsg("Error from GenericBlock::gen_mg5_gridpack: failed to "
@@ -220,7 +221,7 @@ struct GenericBlock
   HepMC::Pythia8ToHepMC ToHepMC;
   std::vector<std::string> physConfig; // This is the pythia steering card, line by line
 
-  LHAupMadgraph* mg5; // NLO generator
+  LHAupMadgraph* mg5; // ME generator
 
 	private:
   GenericBlock() { }
