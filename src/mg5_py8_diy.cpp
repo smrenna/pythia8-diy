@@ -38,7 +38,6 @@
 
 #include "Pythia8/Pythia.h"
 #include "Pythia8Plugins/HepMC2.h"
-#include "Pythia8Plugins/LHAMadgraph.h" // For MadGraph5 
 #include "Rivet/AnalysisHandler.hh"
 #undef foreach // This line prevents a clash of definitions of rivet's legacy foreach with that of DIY
 

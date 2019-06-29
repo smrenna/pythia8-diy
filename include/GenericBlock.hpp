@@ -8,6 +8,7 @@
 #include "Pythia8Plugins/LHAMadgraph.h" // MadGraph
 #undef foreach // This line prevents a clash of definitions of rivet's legacy foreach with that of DIY
 
+#include "LHAMadgraphUser.h" // MadGraph
 #include "HepMC/IO_GenEvent.h"
 #include "Tools.hpp"
 #include <math.h>
@@ -163,7 +164,7 @@ struct GenericBlock
 
 	  // create gridpack for each configuration!
 	  if(!mg5) {
-		  mg5 = new LHAupMadgraph(&pythia, true, dir, "mg5_aMC");
+		  mg5 = new LHAupMadgraphUser(&pythia, true, dir, "mg5_aMC");
 	  }
 
 	  //grid pack is already implemented by LHAMadgraph.h in pythia
@@ -200,6 +201,7 @@ struct GenericBlock
 		  }
 	  }
 	  delete mg5;
+	  mg5 = NULL;
 	  fmt::print(stderr, "[{}] MG5 Finished Init", cp.gid());
 
 	  return;
@@ -221,7 +223,7 @@ struct GenericBlock
   HepMC::Pythia8ToHepMC ToHepMC;
   std::vector<std::string> physConfig; // This is the pythia steering card, line by line
 
-  LHAupMadgraph* mg5; // ME generator
+  LHAupMadgraphUser* mg5; // ME generator
 
 	private:
   GenericBlock() { }
