@@ -6,8 +6,7 @@ DIY=/global/u1/x/xju/code/diy
 DEP=/global/homes/x/xju/hep_packages/Extra
 HIGHFIVE=/global/homes/x/xju/code/HighFive
 
-cmake .. \
-	-DCMAKE_C_COMPILER=`which cc` \
+cmake  -DCMAKE_C_COMPILER=`which cc` \
 	-DCMAKE_CXX_COMPILER=`which CC` \
 	-DDIY_INCLUDE_DIRS=${DIY}/include \
 	-Ddiy_thread=OFF \
@@ -18,3 +17,5 @@ cmake .. \
 	-DPYTHIA8_DIR=${DEP}/pythia8235 \
 	-DHIGHFIVE_DIR=${HIGHFIVE} \
 	-DLHEH5_DIR=${DEP}/LHEH5 \
+	-DCMAKE_CXX_FLAGS="-DGZIPSUPPORT" \
+	..

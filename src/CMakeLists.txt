@@ -12,9 +12,15 @@ install(FILES ${MY_PUBLIC_HEADERS}
 
 
 add_executable              (pythia8-diy pythia8-diy.cpp)
-
 target_link_libraries (pythia8-diy LINK_PUBLIC ${libraries} diygen )
 install(TARGETS pythia8-diy
+    DESTINATION ${CMAKE_INSTALL_PREFIX/bin}
+    RUNTIME DESTINATION bin
+    )
+
+add_executable              (pythia8-diy-lhef pythia8-diy-lhef.cpp)
+target_link_libraries (pythia8-diy-lhef LINK_PUBLIC ${libraries} diygen )
+install(TARGETS pythia8-diy-lhef
     DESTINATION ${CMAKE_INSTALL_PREFIX/bin}
     RUNTIME DESTINATION bin
     )

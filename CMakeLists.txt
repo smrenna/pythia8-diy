@@ -182,9 +182,9 @@ if  (LHEH5_DIR AND HIGHFIVE_DIR)
 	    message(FATAL_ERROR "Specified HighFive dir not found --- check -DHIGHFIVE_DIR")
 	endif()
 
-	add_subdirectory        (withlheh5)
+	#	add_subdirectory        (withlheh5)
 else                        ()
-    message                 (INFO " Need LHEH5 and HighFive in order to build lhehdf program")
+	message                 (INFO " Need LHEH5 and HighFive in order to build lhehdf program")
 endif                       ()
 
 set(CPACK_PACKAGE_VERSION_MAJOR "0")

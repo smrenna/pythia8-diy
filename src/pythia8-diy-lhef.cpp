@@ -95,6 +95,8 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose
 
 	fmt::print(stderr, "[{}] Start to process {} \n", cp.gid(),
 			std::put_time(std::localtime(&tttt), "%c %Z") );
+
+	b->ToHepMC.set_free_parton_exception(false);
 	// This make rivet only report ERRORs
 	// TODO: can we have a global flag to steer verbosity of all moving parts?
 	if (!verbose) Rivet::Log::setLevel("Rivet", Rivet::Log::ERROR);
@@ -170,13 +172,15 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose
 	// All configurations done, initialise Pythia
 	// b->pythia.initPtrs(); // TODO --- is this really necessary here?
 
-	fmt::print(stderr, "{} Pythia Event\n", cp.gid());
-	fmt::print(stderr, "{} before pythia init\n", cp.gid());
+	// fmt::print(stderr, "{} Pythia Event\n", cp.gid());
+	// fmt::print(stderr, "{} before pythia init\n", cp.gid());
 
-  	Event& event = b->pythia.event;
+  	// Event& event = b->pythia.event;
+	b->pythia.settings.mode("Beams:frameType", 4);
+	b->pythia.settings.word("Beams:LHEF", "/global/homes/x/xju/atlas/HMuMuFastSimu/MG5_3jets_LO_M95/mumu3jets_merging/grid_merging/mpi_run/events_100k.lhe.gz");
 	b->pythia.init();
-	fmt::print(stderr, "{} after pythia init\n", cp.gid());
-	fmt::print(stderr, "{} Pythia is initialized\n", cp.gid());
+	// fmt::print(stderr, "{} after pythia init\n", cp.gid());
+	// fmt::print(stderr, "{} Pythia is initialized\n", cp.gid());
 
 	// b->pythia.settings.listChanged();
 
@@ -210,6 +214,9 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp,  bool verbose
 	int iAbort = 0;
 	if (verbose) fmt::print(stderr, "[{}] generating {} events\n", cp.gid(),  b->state.num_events);
 
+	//skip some events
+	int nSkip = cp.gid() * b->state.num_events;
+	b->pythia.LHAeventSkip(nSkip);
 	// Shorthand for the event record in pythia.
     for (unsigned int iEvent = 0; iEvent < b->state.num_events; ++iEvent) {
 		if (!b->pythia.next()) {

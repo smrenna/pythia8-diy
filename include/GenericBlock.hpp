@@ -189,17 +189,17 @@ struct GenericBlock
 				  "launch the MadGraph process");
 		  return ;
 	  }
-	  if(!mg5->amcatnlo) {
-		  // compile the gridpack...
-		  string line("cd "+dir+"; tar -xzf run_gridpack.tar.gz; cd madevent; "
-				  "./bin/compile; ./bin/clean4grid; cd ../; rm run_gridpack.tar.gz; "
-				  "tar czf run_gridpack.tar.gz run.sh madevent; rm -rf run.sh madevent"
-				  );
-		  if(system(line.c_str()) == -1){
-			  pythia.info.errorMsg("GenericBlock::gen_mg5_gridpack: failed compile madevent");
-			  return ;
-		  }
-	  }
+	//  if(!mg5->amcatnlo) {
+	//	  // compile the gridpack...
+	//	  string line("cd "+dir+"; tar -xzf run_gridpack.tar.gz; cd madevent; "
+	//			  "./bin/compile; ./bin/clean4grid; cd ../; rm run_gridpack.tar.gz; "
+	//			  "tar czf run_gridpack.tar.gz run.sh madevent; rm -rf run.sh madevent"
+	//			  );
+	//	  if(system(line.c_str()) == -1){
+	//		  pythia.info.errorMsg("GenericBlock::gen_mg5_gridpack: failed compile madevent");
+	//		  return ;
+	//	  }
+	//  }
 	  delete mg5;
 	  mg5 = NULL;
 	  fmt::print(stderr, "[{}] MG5 Finished Init", cp.gid());
@@ -216,8 +216,7 @@ struct GenericBlock
   data_type buffer;
 
   Pythia pythia; // The generator
-  // Shorthand for the event record in pythia.
-  Event& event = pythia.event;
+  // Event& event = pythia.event;
   int nEvents;
   Rivet::AnalysisHandler *ah;
   HepMC::Pythia8ToHepMC ToHepMC;

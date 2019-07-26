@@ -405,8 +405,10 @@ bool LHAupMadgraphUser::launch() {
 				" to produce " + gpk);
 		return false;
 	}
-	string line = "cd " + dir + "; tar -xzf " + gpk + "; cd madevent; "
-		"./bin/compile; ./bin/clean4grid";
+//	string line = "cd " + dir + "; tar -xzf " + gpk + "; cd madevent; "
+//		"./bin/compile; ./bin/clean4grid";
+	string line = "cd " + dir + "; tar -xzf " + gpk;
+
 	if (!execute(line)) {
 		pythia->info.errorMsg("Error from LHAupMadgraphUser::launch: failed to "
                             "compile MadEvent code"); return false;}
