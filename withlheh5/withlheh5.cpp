@@ -52,23 +52,48 @@ using namespace lheh5;
 
 class LHAupH5 : public Pythia8::LHAup {
   public:
-    LHAupH5( HighFive::File* file_, size_t firstEvent, size_t readSize, size_t nTotal, bool verbose=false, bool readNTrials=true, bool noRead=false) : _numberRead(0),  _sumW(0) {
+    LHAupH5( HighFive::File* file_, size_t firstEvent, size_t readSize, size_t nTotal, bool verbose=false, bool readNTrials=true, bool noRead=false, size_t batchSize=100000) : _numberRead(0),  _sumW(0), _batchSize(batchSize) {
       file = file_;
-      _index       = file->getGroup("index");
       _particle    = file->getGroup("particle");
       _event       = file->getGroup("event");
       _init        = file->getGroup("init");
       _procInfo    = file->getGroup("procInfo");
+      try {
+         _weightvar   = file->getGroup("weightvariations");
+         _hasWeights=true;
+      }
+       catch (Exception& err) {
+        // catch and print any HDF5 error
+        std::cerr << "NOTE: Group weightvariations does not exist." << std::endl;
+         _hasWeights=false;
+      }
       _readSize = readSize;
       _noRead=noRead;
+      _firstEvent=firstEvent;
+      _readSize=readSize;
       // This reads and holds the information of readSize events, starting from firstEvent
       setInit();
-      if (noRead){
-         lheevents = lheh5::readEvents(_index, _particle, _event, firstEvent, 1);
+      //if (noRead){
+         //lheevents = lheh5::readEvents(_index, _particle, _event, firstEvent, 1);
+      DataSet _npLO   =  _procInfo.getDataSet("npLO");
+      DataSet _npNLO  =  _procInfo.getDataSet("npNLO");
+      _npLO.read(npLO);
+      _npNLO.read(npNLO);
+      //}
+     
+      size_t control=0;
+      while (control < readSize) {
+        vector<size_t> temp;
+        temp.push_back(firstEvent + control);
+        if (control+_batchSize <= readSize) temp.push_back(_batchSize);
+        else temp.push_back(readSize - control);
+        control+=_batchSize;
+        _work.push_back(temp);
       }
-      else {
-         lheevents = lheh5::readEvents(_index, _particle, _event, firstEvent, readSize);
-      }
+  for (auto w : _work) {
+     std::cerr << "offset: " << w[0] << " reads: " << w[1] << " bs: " << _batchSize <<"\n";
+  }
+
       if (readNTrials) {
          // Sum of trials for ALL to be processed events!!!
          DataSet _trials     =  _event.getDataSet("trials");
@@ -86,21 +111,34 @@ class LHAupH5 : public Pythia8::LHAup {
     bool setInit() override;// override;
     bool setEvent(int idProc=0) override;// override;
 
+    void setBatch(std::vector<size_t> mywork) {
+       _numberRead = 0;
+      lheevents = lheh5::readEvents(_particle, _event, mywork[0], mywork[1], npLO, npNLO);
+    }
     size_t nTrials() { return _nTrials; }
 
     int getSize() { return lheevents._vnparticles.size(); }
+    int npLO, npNLO;
+    vector< vector<size_t> > _work; // Tuple : offset and readsize
   
   private:
 
     HighFive::File*                         file;
     // Connect with groups
-    HighFive::Group                         _index, _particle, _event, _init, _procInfo;
-    lheh5::Events                        lheevents;
+    HighFive::Group                         _index, _particle, _event, _init, _procInfo, _weightvar;
+    lheh5::Events2                        lheevents;
     size_t                                     _numberRead;
     size_t                                     _nTrials;
+    size_t                                     _batchSize;
     double                                  _sumW;
     bool                                  _noRead;
     size_t                                _readSize;
+    bool _hasWeights;
+    vector<string>                     _weightnames;
+    vector<vector<double>>            _weightvalues;
+    vector<double>                    _eventweightvalues;
+    size_t _firstEvent;
+
 
     // Flag to set particle production scales or not.
     LHAscales scalesNow;
@@ -124,6 +162,27 @@ bool LHAupH5::setInit()
    _init.getDataSet("energyB")  .read(energyB);
    _init.getDataSet("PDFgroupB").read(PDFgroupB);
    _init.getDataSet("PDFsetB")  .read(PDFsetB);
+
+   _weightnames.clear();
+   _weightvalues.clear();
+   if (_hasWeights) {
+      for (auto wname : _weightvar.listObjectNames()) {
+         _weightnames.push_back(wname);
+      }
+
+      std::vector<double> temp;
+      temp.reserve(_readSize);
+      for (auto w : _weightnames) {
+
+            DataSet _wtemp     =  _weightvar.getDataSet(w);
+            _wtemp    .select({_firstEvent}, {_readSize}).read(temp);
+            _weightvalues.push_back(temp);
+      }
+   }
+
+
+
+
 
    setBeamA(beamA, energyA, PDFgroupA, PDFsetA);
    setBeamB(beamB, energyB, PDFgroupB, PDFsetB);
@@ -172,6 +231,14 @@ bool LHAupH5::setEvent(int idProc)
   aqcdupSave = eHeader.aqcd;
   std::vector<lheh5::Particle> particles;
   double scalein = -1.;
+
+   //std::cerr << "INFO: " << infoPtr << "\n";
+   //std::cerr << "INFOWCMN: " << infoPtr->weights_compressed_names << "\n";
+   infoPtr->weights_compressed_names = &_weightnames;
+  _eventweightvalues.clear();;
+  for (size_t  i=0; i<_weightnames.size(); ++i) _eventweightvalues.push_back(_weightvalues[i][_numberRead]);
+
+  infoPtr->weights_compressed = &_eventweightvalues;
 
   // TEMPorary hack for mothers not being set in Sherpa
   if (_noRead) {
@@ -243,7 +310,7 @@ void process_block_lhe_performance_same(Block* b, diy::Master::ProxyWithLink con
   // TODO seed mode 3, i.e. draw nrank random numbers
 
   HighFive::File file(in_file, HighFive::File::ReadOnly);  
-  hid_t dspace = H5Dget_space(file.getDataSet("index/start").getId());
+  hid_t dspace = H5Dget_space(file.getDataSet("event/start").getId());
   
   size_t eventOffset = 0;
   
@@ -256,7 +323,6 @@ void process_block_lhe_performance_same(Block* b, diy::Master::ProxyWithLink con
 
    // hier unlops zeug
    // Allow to set the number of addtional partons dynamically. TODO here important
-  HardProcessBookkeeping* hardProcessBookkeeping = NULL;
   int scheme = ( b->pythia.settings.flag("Merging:doUMEPSTree")
               || b->pythia.settings.flag("Merging:doUMEPSSubt")) ?
               1 :
@@ -329,7 +395,7 @@ void process_block_lhe_performance(Block* b, diy::Master::ProxyWithLink const& c
   // TODO seed mode 3, i.e. draw nrank random numbers
 
   HighFive::File file(in_file, HighFive::File::ReadOnly);  
-  hid_t dspace = H5Dget_space(file.getDataSet("index/start").getId());
+  hid_t dspace = H5Dget_space(file.getDataSet("event/start").getId());
   size_t nEvents  =  H5Sget_simple_extent_npoints(dspace);
   if (nMax > 0 && nMax < nEvents) {
      nEvents = nMax;
@@ -407,7 +473,7 @@ void process_block_lhe_performance(Block* b, diy::Master::ProxyWithLink const& c
 }
 
 //void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> physConfig, std::vector<std::string> analyses, bool verbose)
-void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size, int rank,  bool verbose, int npc, string in_file, int nMax)
+void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size, int rank,  bool verbose, int npc, string in_file, int nMax, size_t batchSize)
 {
    // TODO does that work???
    //if (cp.gid()>0)  {
@@ -430,21 +496,19 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   // TODO seed mode 3, i.e. draw nrank random numbers
 
   HighFive::File file(in_file, HighFive::File::ReadOnly);  
-  hid_t dspace = H5Dget_space(file.getDataSet("index/start").getId());
+  hid_t dspace = H5Dget_space(file.getDataSet("event/start").getId());
   size_t nEvents  =  H5Sget_simple_extent_npoints(dspace);
-  if (nMax > 0 && nMax < nEvents) {
-     nEvents = nMax;
-  }
-  size_t ev_rank = floor(nEvents/size);
-  size_t eventOffset = rank*ev_rank;
-  fmt::print(stderr, "[{}] reads {}/{} events starting at {}\n", cp.gid(), ev_rank, nEvents, eventOffset);
-  
-  // Create an LHAup object that can access relevant information in pythia.
-  LHAupH5* LHAup = new LHAupH5( &file , eventOffset, ev_rank, nEvents, verbose);
+  if (nMax > 0 && nMax < nEvents) nEvents = nMax;
+  size_t ev_rank = floor(nEvents/size); // Total number of events this block/rank processes
+  size_t eventOffset = rank*ev_rank; //
+
+  fmt::print(stderr, "[{}] reads {}/{} events starting at {} in batches of {}\n", cp.gid(), ev_rank, nEvents, eventOffset, batchSize);
 
   b->pythia.settings.mode("Beams:frameType", 5);
-  // Give the external reader to Pythia
-  b->pythia.setLHAupPtr(LHAup);
+  // Create an LHAup object that can access relevant information in pythia.
+  //LHAupH5* LHAup = new LHAupH5( &file , eventOffset, ev_rank, nEvents, verbose);
+  //// Give the external reader to Pythia
+  //b->pythia.setLHAupPtr(LHAup);
 
    // hier unlops zeug
    // Allow to set the number of addtional partons dynamically. TODO here important
@@ -461,7 +525,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   HardProcessBookkeeping* hardProcessBookkeepingPtr
     = new HardProcessBookkeeping(scheme);
 
-  b->pythia.setUserHooksPtr(hardProcessBookkeepingPtr);
+  if (scheme!=0) b->pythia.setUserHooksPtr(hardProcessBookkeepingPtr);
 
   double sigmaTotal  = 0.;
   double errorTotal  = 0.;
@@ -479,8 +543,6 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
     : new PtjTMSdefinitionHooks(b->pythia.parm("Merging:TMS"),6.0);
   if (unlopsType >0) b->pythia.setMergingHooksPtr( ptjTMSdefinitionPtr );
 
-  // All configurations done, initialise Pythia
-  b->pythia.init();
 
   // Delete the AnalysisHandlerPtr to ensure there is no memory confusion
   if (b->ah) delete b->ah;
@@ -499,90 +561,103 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   // The event loop
   int nAbort = 5;
   int iAbort = 0;
-  if (verbose)  fmt::print(stderr, "[{}] generating  {} events\n", cp.gid(),  LHAup->getSize());
-  for (size_t iEvent = 0; iEvent < LHAup->getSize(); ++iEvent) {
-    if (verbose) fmt::print(stderr, "[{}] is at event {}\n", cp.gid(), iEvent);
-    if (!b->pythia.next()) {
-       if (verbose) b->pythia.stat();
-       if (verbose) LHAup->listEvent();
 
-       // Gracefully ignore events with 0 weight
-       if (LHAup->weight() == 0) {
-          if (verbose) fmt::print(stderr, "[{}] encounters and ignores event {} as it has zero weight\n", cp.gid(), iEvent);
-          continue;
+  // Create an LHAup object that can access relevant information in pythia.
+  LHAupH5* LHAup = new LHAupH5( &file , eventOffset, ev_rank, nEvents, verbose, true, false,  batchSize);
+  // Give the external reader to Pythia
+  b->pythia.setLHAupPtr(LHAup);
+  // All configurations done, initialise Pythia
+  b->pythia.init();
+
+  for (auto w : LHAup->_work) {
+     fmt::print(stderr, "[{}] next batch\n", cp.gid());
+     LHAup->setBatch(w);
+
+     fmt::print(stderr, "[{}] generating  {} events\n", cp.gid(),  LHAup->getSize());
+     for (size_t iEvent = 0; iEvent < LHAup->getSize(); ++iEvent) {
+       if (verbose) fmt::print(stderr, "[{}] is at event {}\n", cp.gid(), iEvent+w[0]);
+       if (!b->pythia.next()) {
+          if (verbose) b->pythia.stat();
+          if (verbose) LHAup->listEvent();
+
+          // Gracefully ignore events with 0 weight
+          if (LHAup->weight() == 0) {
+             if (verbose) fmt::print(stderr, "[{}] encounters and ignores event {} as it has zero weight\n", cp.gid(), iEvent+w[0]);
+             continue;
+          }
+          else {
+             if (++iAbort < nAbort) continue; // All other errors contribute to the abort counter
+          }
+         break;
        }
-       else {
-          if (++iAbort < nAbort) continue; // All other errors contribute to the abort counter
+       //if (verbose && iEvent < 2 ) LHAup->listEvent();
+       if (verbose ) LHAup->listEvent();
+       if (verbose) fmt::print(stderr, "[{}] event weight {} \n", cp.gid(), b->pythia.info.weight());
+       //if (verbose) fmt::print(stderr, "[{}] event weight {} {} {}\n", cp.gid(), LHAup->weight(), b->pythia.info.weight(), b->pythia.info.eventWeightLHEF);
+         
+       // Get event weight(s).
+       double evtweight         = b->pythia.info.weight();
+       // Additional PDF/alphaS weight for internal merging.
+       //evtweight               *= b->pythia.info.mergingWeightNLO() // commented out
+       // Additional weight due to random choice of reclustered/non-reclustered
+       // treatment. Also contains additional sign for subtractive samples.
+                                   //*hardProcessBookkeepingPtr->getNormFactor(); // NOTE this would be necessary for NLO
+       if (verbose) fmt::print(stderr, "[{}] after weight {} \n", cp.gid(), evtweight);
+
+       HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
+
+       
+       // weight push_back
+       // Work with weighted (LHA strategy=-4) events.
+       //double normhepmc = 1.;
+       //if (abs(b->pythia.info.lhaStrategy()) == 4)  // Triggering in l 128
+         ////normhepmc = 1. / double(1e9*nEvent);
+         //normhepmc = 1. / double(LHAup->nTrials());
+         //// Work with unweighted events.
+       //else
+         ////normhepmc = xs / double(1e9*nEvent);
+         //normhepmc = xs / double(LHAup->nTrials());
+
+       double normhepmc = 1. / double(LHAup->nTrials()); //
+
+
+       hepmcevt->weights().push_back(evtweight*normhepmc);
+       if (verbose) fmt::print(stderr, "[{}] norm weight {} \n", cp.gid(), evtweight*normhepmc);
+       b->ToHepMC.set_print_inconsistency(false);
+       b->ToHepMC.set_free_parton_exception(false);
+       b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
+
+       sigmaTotal  += evtweight*normhepmc;
+       sigmaSample += evtweight*normhepmc;
+       errorTotal  += pow2(evtweight*normhepmc);
+       errorSample += pow2(evtweight*normhepmc);
+       // Report cross section to hepmc
+       HepMC::GenCrossSection xsec;
+       xsec.set_cross_section( sigmaTotal, b->pythia.info.sigmaErr() );
+       hepmcevt->set_cross_section( xsec );
+       if (verbose) fmt::print(stderr, "[{}] xsec {} \n", cp.gid(), sigmaTotal);
+
+       // Here more
+       try {b->ah->analyze( *hepmcevt ) ;} catch (const std::exception& e)
+       {
+         if (verbose) fmt::print(stderr, "[{}] exception in analyze: {}\n", cp.gid(), e.what());
        }
-      break;
-    }
-    //if (verbose && iEvent < 2 ) LHAup->listEvent();
-    if (verbose ) LHAup->listEvent();
-    if (verbose) fmt::print(stderr, "[{}] event weight {} \n", cp.gid(), b->pythia.info.weight());
-    //if (verbose) fmt::print(stderr, "[{}] event weight {} {} {}\n", cp.gid(), LHAup->weight(), b->pythia.info.weight(), b->pythia.info.eventWeightLHEF);
-      
-    // Get event weight(s).
-    double evtweight         = b->pythia.info.weight();
-    // Additional PDF/alphaS weight for internal merging.
-    //evtweight               *= b->pythia.info.mergingWeightNLO() // commented out
-    // Additional weight due to random choice of reclustered/non-reclustered
-    // treatment. Also contains additional sign for subtractive samples.
-                                //*hardProcessBookkeepingPtr->getNormFactor(); // NOTE this would be necessary for NLO
-    if (verbose) fmt::print(stderr, "[{}] after weight {} \n", cp.gid(), evtweight);
-
-    HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
-
-    
-    // weight push_back
-    // Work with weighted (LHA strategy=-4) events.
-    //double normhepmc = 1.;
-    //if (abs(b->pythia.info.lhaStrategy()) == 4)  // Triggering in l 128
-      ////normhepmc = 1. / double(1e9*nEvent);
-      //normhepmc = 1. / double(LHAup->nTrials());
-      //// Work with unweighted events.
-    //else
-      ////normhepmc = xs / double(1e9*nEvent);
-      //normhepmc = xs / double(LHAup->nTrials());
-
-    double normhepmc = 1. / double(LHAup->nTrials()); //
-
-
-    hepmcevt->weights().push_back(evtweight*normhepmc);
-    if (verbose) fmt::print(stderr, "[{}] norm weight {} \n", cp.gid(), evtweight*normhepmc);
-    b->ToHepMC.set_print_inconsistency(false);
-    b->ToHepMC.set_free_parton_exception(false);
-    b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
-
-    sigmaTotal  += evtweight*normhepmc;
-    sigmaSample += evtweight*normhepmc;
-    errorTotal  += pow2(evtweight*normhepmc);
-    errorSample += pow2(evtweight*normhepmc);
-    // Report cross section to hepmc
-    HepMC::GenCrossSection xsec;
-    xsec.set_cross_section( sigmaTotal, b->pythia.info.sigmaErr() );
-    hepmcevt->set_cross_section( xsec );
-    if (verbose) fmt::print(stderr, "[{}] xsec {} \n", cp.gid(), sigmaTotal);
-
-    // Here more
-    try {b->ah->analyze( *hepmcevt ) ;} catch (const std::exception& e)
-    {
-      if (verbose) fmt::print(stderr, "[{}] exception in analyze: {}\n", cp.gid(), e.what());
-    }
-    delete hepmcevt;
-    // TODO: make 1000 a free parameter a la msg_every
-    if (iEvent%100 == 0 && cp.gid()==0) {
-       if (b->state.num_events <0 | b->state.num_events > LHAup->getSize()) {
-          fmt::print(stderr, "[{}]  {}/{} \n", cp.gid(),  iEvent, LHAup->getSize());
+       delete hepmcevt;
+       // TODO: make 1000 a free parameter a la msg_every
+       if (iEvent%100 == 0 && cp.gid()==0) {
+          if (b->state.num_events <0 | b->state.num_events > LHAup->getSize()) {
+             fmt::print(stderr, "[{}]  {}/{} \n", cp.gid(),  iEvent+w[0], LHAup->getSize());
+          }
+          else {
+             fmt::print(stderr, "[{}]  {}/{} \n", cp.gid(),  iEvent+w[0], b->state.num_events);
+          }
        }
-       else {
-          fmt::print(stderr, "[{}]  {}/{} \n", cp.gid(),  iEvent, b->state.num_events);
-       }
-    }
 
-    //if (iEvent >= b->state.num_events && b->state.num_events>=0) {
-       //fmt::print(stderr, "[{}] exiting event loop after: {}/{}\n", cp.gid(), iEvent, b->state.num_events);
-       //break;
-    //}
+       //if (iEvent >= b->state.num_events && b->state.num_events>=0) {
+          //fmt::print(stderr, "[{}] exiting event loop after: {}/{}\n", cp.gid(), iEvent, b->state.num_events);
+          //break;
+       //}
+     }
   }
 
   // Event loop is done, set xsection correctly and normalise histos
@@ -677,6 +752,7 @@ int main(int argc, char* argv[])
     int runmode = 0;
     int nEvents=1000;
     size_t seed=1234;
+    size_t batch=100000;
     vector<std::string> analyses;
     std::string out_file="diy.yoda";
     std::string pfile="runPythia.cmd";
@@ -692,6 +768,7 @@ int main(int argc, char* argv[])
     ops >> Option('n', "nevents",   nEvents,   "Number of events to generate in total");
     ops >> Option('m', "runmode",   runmode,   "Runmode - 0 normal, 1 means performance");
     ops >> Option('b', "nblocks",   nBlocks,   "Number of blocks");
+    ops >> Option("batch",   batch,   "Batch size when reading from H5");
     ops >> Option('a', "analysis",  analyses,  "Rivet analyses --- can be given multiple times");
     ops >> Option('o', "output",    out_file,  "Output filename.");
     ops >> Option('s', "seed",      seed,      "The Base seed --- this is incremented for each block.");
@@ -829,8 +906,8 @@ int main(int argc, char* argv[])
        }
        else {
 
-          master.foreach([world, verbose, ipc, in_file, nEvents](Block* b, const diy::Master::ProxyWithLink& cp)
-                           {process_block_lhe(b, cp, world.size(), world.rank(), verbose, ipc, in_file, nEvents); });
+          master.foreach([world, verbose, ipc, in_file, nEvents, batch](Block* b, const diy::Master::ProxyWithLink& cp)
+                           {process_block_lhe(b, cp, world.size(), world.rank(), verbose, ipc, in_file, nEvents, batch); });
 
 
           diy::reduce(master,              // Master object
