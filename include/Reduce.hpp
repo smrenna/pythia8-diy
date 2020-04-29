@@ -71,23 +71,19 @@ void bc_pointconfig(B* b,                                  // local block
 
       PointConfig  tmp;
       rp.dequeue(nbr_gid, tmp);
+	  // received a PointConfig
       b->state=tmp;
     }
 
-    if (rp.out_link().size() == 0)        // final round; nothing needs to be sent
-       return;
+    // if (rp.out_link().size() == 0)        // final round; nothing needs to be sent
+    //    return;
 
 
     // step 2: enqueue
     for (int i = 0; i < rp.out_link().size(); ++i)    // redundant since size should equal to 1
     {
-        // only send to root of group, but not self
-        if (rp.out_link().target(i).gid != rp.gid())
-        {
-	  rp.enqueue(rp.out_link().target(i), b->state);
-        }
-        //else
-            //fmt::print(stderr, "[{}:{}] Skipping sending to self\n", rp.gid(), round);
+        // send out PointConfig
+	  	rp.enqueue(rp.out_link().target(i), b->state);
     }
 }
 

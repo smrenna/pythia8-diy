@@ -3,6 +3,7 @@
 
 
 #include <glob.h>
+#include <string>
 // Get all files from subdirectories following a certain pattern
 // https://stackoverflow.com/questions/8401777/simple-glob-in-c-on-unix-system
 inline std::vector<std::string> glob(const std::string& pat)
@@ -45,4 +46,21 @@ bool readConfig(std::string fname, std::vector<std::string> & vconf, bool verbos
 constexpr bool is_powerof2(int v) {
     return v && ((v & (v - 1)) == 0);
 }
+
+struct MatchPathSeparator
+{
+	bool operator()( char ch ) const
+	{
+		return ch == '/';
+	}
+};
+
+std::string basepath(const std::string& pathname)
+{
+	return std::string(
+			pathname.begin(),
+			std::find_if(pathname.rbegin(), pathname.rend(), MatchPathSeparator()).base()
+			);
+}
+
 #endif
