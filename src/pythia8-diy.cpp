@@ -8,9 +8,6 @@
 #include <stdexcept>
 #include <random>
 #include <typeinfo>
-#include <ctime>
-#include <iomanip> // put_time
-#include <unistd.h>
 
 #include <diy/master.hpp>
 #include <diy/reduce.hpp>
@@ -39,9 +36,6 @@
 #include "Pythia8Plugins/HepMC2.h"
 #include "Rivet/AnalysisHandler.hh"
 #undef foreach // This line prevents a clash of definitions of rivet's legacy foreach with that of DIY
-
-
-#include <chrono> // to time running time, since c++11
 
 #include "HepMC/IO_GenEvent.h"
 
@@ -103,25 +97,19 @@ void treeVertex(HepMC::GenEvent& event) {
 
 void print_block(Block* b, const diy::Master::ProxyWithLink& cp)
 {
-    for (auto s : b->state.conf) {
+   for (auto s : b->state.conf) {
       fmt::print(stderr, "[{}]: {}\n", cp.gid(), s);
-    }
-    fmt::print(stderr, "\n");
-    for (auto s : b->state.analyses) {
+   }
+   fmt::print(stderr, "\n");
+   for (auto s : b->state.analyses) {
       fmt::print(stderr, "[{}]: {} ", cp.gid(), s);
-    }
+   }
    fmt::print(stderr, "\n");
 }
 
 
 void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
 {
-  auto start = std::chrono::system_clock::now();
-  std::time_t tttt = std::time(nullptr);
-  if(verbose) {
-    fmt::print(stderr, "[{}] Start to process {} \n", cp.gid(),
-        std::put_time(std::localtime(&tttt), "%c %Z") );
-  }
   // This make rivet only report ERRORs
   // TODO: can we have a global flag to steer verbosity of all moving parts?
   if (!verbose) Rivet::Log::setLevel("Rivet", Rivet::Log::ERROR);
@@ -159,13 +147,8 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
   // TODO: we may want to feed the "ignore beams" switch as well
   for (auto a : b->state.analyses) b->ah->addAnalysis(a);
 
-	// Terminate the program if analysis is not available
-	if(b->ah->analyses().empty()) {
-		throw std::range_error("no analysis provided, I don't run!");
-	}
   // The event loop
-	int nAbort = (int) b->state.num_events * 0.005; // 0.005 is a random fraction
-	nAbort = nAbort > 10? nAbort: 10;
+  int nAbort = 5;
   int iAbort = 0;
   if (verbose) fmt::print(stderr, "[{}] generating {} events\n", cp.gid(),  b->state.num_events);
   for (unsigned int iEvent = 0; iEvent < b->state.num_events; ++iEvent) {
@@ -174,7 +157,7 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
       break;
     }
     HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
-    b->ToHepMC.fill_next_event(b->pythia, hepmcevt );
+    b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
 
     try {b->ah->analyze( *hepmcevt ) ;} catch (const std::exception& e)
     {
@@ -198,36 +181,29 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
 
   // This is a bit annoying --- we need to unscale Histo1D and Histo2D beforge the reduction
   // TODO: Figure out whether this is really necessary
-  // for (auto ao : b->data) {
-  //   if (ao->hasAnnotation("ScaledBy"))
-  //   {
-  //     double sc = std::stod(ao->annotation("ScaledBy"));
-  //     if (ao->type()=="Histo1D")
-  //     {
-  //        dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
-  //        dynamic_cast<YODA::Histo1D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
-  //     }
-  //     else if (ao->type()=="Histo2D")
-  //     {
-  //        dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
-  //        dynamic_cast<YODA::Histo2D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
-  //     }
-  //   }
-  // }
-  auto end = std::chrono::system_clock::now();
-	std::chrono::duration<double> diff = end - start;
-  if(verbose){
-	  fmt::print(stderr, "[{}] Finishes processing, Takes {} minutes\n", cp.gid(), diff.count()/60);
+  for (auto ao : b->data) {
+    if (ao->hasAnnotation("ScaledBy"))
+    {
+      double sc = std::stod(ao->annotation("ScaledBy"));
+      if (ao->type()=="Histo1D")
+      {
+         dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
+         dynamic_cast<YODA::Histo1D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+      }
+      else if (ao->type()=="Histo2D")
+      {
+         dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
+         dynamic_cast<YODA::Histo2D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+      }
+    }
   }
 }
 
 
-void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int nConfigs, bool verbose)
+void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int rank, bool verbose)
 {
- if (verbose) fmt::print(stderr, "[{}] sees write_yoda \n", cp.gid());
- if (cp.gid() > nConfigs - 1 ) return;
-
-/***
+ if (verbose) fmt::print(stderr, "[{}] -- rank {} sees write_yoda \n", cp.gid(), rank);
+  if (rank==0 && cp.gid()==0) {
     for (auto ao : b->buffer) {
       if (ao->hasAnnotation("OriginalScaledBy"))
       //if (ao->hasAnnotation("ScaledBy"))
@@ -244,9 +220,9 @@ void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int nConfigs, bo
         }
       }
     }
-***/
     if (verbose) fmt::print(stderr, "[{}] -- writing to file {}  \n", cp.gid(), b->state.f_out);
     YODA::WriterYODA::write(b->state.f_out, b->buffer);
+  }
 }
 
 //void process_block_hepmc(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
@@ -312,10 +288,17 @@ void clear_buffer(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
   b->buffer.clear();
 }
 
+void set_pc(Block* b,                             // local block
+                 const diy::Master::ProxyWithLink& cp, // communication proxy
+                 PointConfig pc)                         // user-defined additional arguments
+{
+  if (cp.gid() == 0) b->state = pc;
+}
+
+
 // --- main program ---//
 int main(int argc, char* argv[])
 {
-    auto start = std::chrono::system_clock::now();
     diy::mpi::environment env(argc, argv);
     diy::mpi::communicator world;
     
@@ -326,12 +309,10 @@ int main(int argc, char* argv[])
     int runnum = -1;
     int nEvents=1000;
     size_t seed=1234;
-    int evts_per_block_in = -1;
     vector<std::string> analyses;
     std::string out_file="diy.yoda";
     std::string pfile="runPythia.cmd";
     std::string indir="";
-    int dim(2); // 2-d blocks
     // get command line arguments
     using namespace opts;
     Options ops(argc, argv);
@@ -341,13 +322,13 @@ int main(int argc, char* argv[])
     bool writehepmc   = ops >> Present('w', "writehepmc", "write hepmc events");
     ops >> Option('t', "thread",    threads,   "Number of threads");
     ops >> Option('n', "nevents",   nEvents,   "Number of events to generate in total");
+    ops >> Option('b', "nblocks",   nBlocks,   "Number of blocks");
     ops >> Option('a', "analysis",  analyses,  "Rivet analyses --- can be given multiple times");
     ops >> Option('o', "output",    out_file,  "Output filename.");
     ops >> Option('s', "seed",      seed,      "The Base seed --- this is incremented for each block.");
     ops >> Option('p', "pfile",     pfile,     "Parameter config file for testing __or__ input file name to look for in directory.");
     ops >> Option('i', "indir",     indir,     "Input directory with hierarchical pfiles");
     ops >> Option('r', "runnum",    runnum,    "Use only runs ending runnum");
-    ops >> Option(     "evtsPerBlock",     evts_per_block_in,     "Events per block");
     if (ops >> Present('h', "help", "Show help"))
     {
         std::cout << "Usage: " << argv[0] << " [OPTIONS]\n";
@@ -355,7 +336,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    int nConfigs = 0;
+    int nConfigs;
 
     int batchsize=10;
 
@@ -385,14 +366,13 @@ int main(int argc, char* argv[])
 
     }
     
-
-
+    std::vector<std::string> physConfig;
+    std::vector<std::vector<std::string> > physConfigs;
+    std::vector<std::string> out_files;
+    bool f_ok;
     if( world.rank()==0 ) {
-        bool f_ok;
-        // Program logic: check whether a single parameter file has been given 
-        // or a directory.
-        std::vector<std::string> physConfig;
-        physConfig.clear();
+       // Program logic: check whether a single parameter file has been given or
+       // a directory.
        f_ok = readConfig(pfile, physConfig, verbose);
        if (!f_ok) {
           // Use glob to look for files in directory
@@ -404,185 +384,107 @@ int main(int argc, char* argv[])
              physConfig.clear();
              bool this_ok = readConfig(f, physConfig, verbose);
              if (this_ok) {
-               nConfigs ++;
+                physConfigs.push_back(physConfig);
+                out_files.push_back(f+".yoda");
              }
           }
        } 
        else {
-         nConfigs = 1;
+          physConfigs.push_back(physConfig);
+          out_files.push_back(out_file);
        }
+       nConfigs=physConfigs.size();
     }
 
     MPI_Bcast(&nConfigs,   1, MPI_INT, 0, world);
-
-    // number of events per block is inferred from the total number of events 
-    // and the number of events per block
-    // Taking advantage of DIY being able to map any number of blacks to available CPU resources
-    const int MINIMUM_NUMBER_EVENTS = 2000; // each block at least generates 2000 events
-    int evts_per_block = (evts_per_block_in > 1)? evts_per_block_in: MINIMUM_NUMBER_EVENTS;
-    size_t num_universes = ceil(nEvents/evts_per_block); // number of blocks dealing with the same configuration
-    num_universes = num_universes < 1?1:num_universes;
 
 
 
     // ----- starting here is a lot of standard boilerplate code for this kind of
     //       application.
     int mem_blocks  = -1;  // all blocks in memory, if value here then that is how many are in memory
-
-
+    int dim(1);
+    
+    size_t blocks;
+    if (nBlocks==0) blocks= world.size() * threads;
+    else blocks=nBlocks;
     // diy initialization
     diy::FileStorage storage("./DIY.XXXXXX"); // used for blocks moved out of core
-
-    // set global data bounds
     Bounds domain;
-    for (int i = 0; i < dim-1; ++i) {
+    for (int i = 0; i < dim; ++i) {
       domain.min[i] = 0;
-      // to identify the number of configurations
-      domain.max[i] = nConfigs;
+      domain.max[i] = blocks-1;
     }
-    // number of blocks used to produce the events of the same physics and configuration
-    // a.k.a the configuration in the same folder
-    domain.min[dim-1] = 0; domain.max[dim-1] = num_universes;
-
     ////// choice of contiguous or round robin assigner
-    size_t tot_blocks = nConfigs*num_universes;
-    diy::ContiguousAssigner   assigner(world.size(), tot_blocks);
-    
-    if( world.rank()==0 ) {
-		  std::time_t tttt = std::time(nullptr);
-      fmt::print(stderr, "\n*** This is diy running Pythia8 ***\n");
-      fmt::print(stderr, "\n    Local Time:              {}\n", std::put_time(std::localtime(&tttt), "%c %Z"));
-      fmt::print(stderr, "\n    Universes:               {}\n", num_universes);
-      fmt::print(stderr, "\n    Physics configurations:  {}\n", nConfigs);
-      fmt::print(stderr, "\n    Number of events: {}\n", nEvents);
-      fmt::print(stderr, "\n    Total number of events:  {}\n", nEvents*nConfigs);
-      fmt::print(stderr, "\n    World size:  {}\n", world.size());
-      fmt::print(stderr, "\n    Events Per Bloack:  {}\n", evts_per_block);
-      fmt::print(stderr, "\n    Total blocks:  {}\n", tot_blocks);
-      for (auto s : analyses) {
-        fmt::print(stderr, "\n	Analyses: {} \n", s);
-		  }
-		fmt::print(stderr, "***********************************\n");
-	}
+    diy::ContiguousAssigner   assigner(world.size(), blocks);
+    //// decompose the domain into blocks
+    //// This is a DIY regular way to assign neighbors. You can do this manually.
+    diy::RegularDecomposer<Bounds> decomposer(dim, domain, blocks);
 
+    int k = 2;       // the radix of the k-ary reduction tree
+    diy::RegularBroadcastPartners comm(decomposer, k, true);
 
-  // whether faces are shared in each dimension; uninitialized values default to false
-	diy::RegularDecomposer<Bounds>::BoolVector          share_face(dim);
-	// whether boundary conditions are periodic in each dimension; uninitialized values default to false
-	diy::RegularDecomposer<Bounds>::BoolVector          wrap(dim);
-	// number of ghost cells per side in each dimension; uninitialized values default to 0
-	diy::RegularDecomposer<Bounds>::CoordinateVector    ghosts(dim);
-	// number of blocks in each dimension; 0 means no constraint; uninitialized values default to 0
-	diy::RegularDecomposer<Bounds>::DivisionsVector     divs(dim);
-	divs[dim - 1] = num_universes;                      // one universe per block in last dimension
-
-	//// decompose the domain into blocks
-	diy::RegularDecomposer<Bounds> decomposer(
-			dim, 
-			domain, 
-			tot_blocks,
-			share_face, wrap, ghosts, divs
-			);
-
+    diy::RegularMergePartners  partners(decomposer,  // domain decomposition
+                                        k,           // radix of k-ary reduction
+                                        true); // contiguous = true: distance doubling
 
 
     diy::Master master(world, threads, mem_blocks, &Block::create, &Block::destroy,
-          &storage, &Block::save, &Block::load);
+                     &storage, &Block::save, &Block::load);
     AddBlock create(master);
     decomposer.decompose(world.rank(), assigner, create); // Note: only decompose once!
 
+    if( world.rank()==0 ) {
+      fmt::print(stderr, "\n*** This is diy running Pythia8 ***\n");
+      fmt::print(stderr, "\n    Blocks:                  {}\n", blocks);
+      fmt::print(stderr, "\n    Physics configurations:  {}\n", nConfigs);
+      fmt::print(stderr, "\n    Number of events/config: {}\n", nEvents);
+      fmt::print(stderr, "\n    Total number of events:  {}\n", nEvents*nConfigs);
+      fmt::print(stderr, "***********************************\n");
+    }
 
-	// setup configurations for each scan
-	master.foreach( [&](Block* b, const diy::Master::ProxyWithLink& cp)
-			{ b->init_data(cp, nConfigs, evts_per_block, seed, indir, pfile, analyses, out_file, verbose); });
+    PointConfig pc;
+    for (int ipc=0;ipc<nConfigs;++ipc) {
+       if (world.rank()==0) {
+          pc = mkRunConfig(blocks, nEvents, seed, physConfigs[ipc], analyses, out_files[ipc]);
+       }
 
-	// make sure blocks are initialised!
-	// Block all ranks
-	MPI_Barrier(MPI_COMM_WORLD);
+       // We need to tell the first block about the new configuration
+       master.foreach([world, pc](Block* b, const diy::Master::ProxyWithLink& cp)
+                        {set_pc(b, cp, pc); });
 
-	// Let's decompose the problem
-	int k = 2;       // the radix of the k-ary reduction tree
+       // Broadcast the runconfig to the other blocks
+       diy::reduce(master, assigner, comm, &bc_pointconfig<Block>);
 
-	// First create partners for merge over regular block grid.
-	// These will be used to get divisions vector and kvalues vector for default merge reduction.
-	// We won't actually do the merge with these partners. Instead, we'll use the divisions vector as is
-	// and will modify the kvalues vector to only merge in final dimension.
-	bool contiguous = true;
-	diy::RegularMergePartners  orig_partners(
-			decomposer,         // domain decomposition
-			k,                  // radix of k-ary reduction
-			contiguous);        // contiguous = true: distance doubling
-	diy::RegularMergePartners::KVSVector orig_kvs = orig_partners.kvs(); // original vector of [dim, k value] for each round
-	diy::RegularMergePartners::KVSVector my_kvs;                         // subset of orig_kvs for only rounds in the final dimension
-	divs = orig_partners.divisions();                                    // number of blocks in each dimension
+       if (verbose) master.foreach([world](Block* b, const diy::Master::ProxyWithLink& cp)
+                        {print_block(b, cp); });
 
-	// modify orig_kvs to get my_kvs
-	for (auto i = 0; i < orig_kvs.size(); i++) {
-		if (orig_kvs[i].dim == dim - 1)                        // keep last dim only
-			my_kvs.push_back(orig_kvs[i]);
-  }
+       //if (writehepmc) {
+          //master.foreach([world, verbose, ipc](Block* b, const diy::Master::ProxyWithLink& cp)
+                           //{process_block_hepmc(b, cp, verbose); });
+       //}
 
-	// debug: print orig_kvs and my_kvs
-	/***
-	  fmt::print(stderr, "orig_kvs: ");
-	  for (auto i = 0; i < orig_kvs.size(); i++)
-	  fmt::print(stderr, "[ dim={}, k={} ]", orig_kvs[i].dim, orig_kvs[i].size);
-	  fmt::print(stderr, "\n");
-	  fmt::print(stderr, "my_kvs: ");
-	  for (auto i = 0; i < my_kvs.size(); i++)
-	  fmt::print(stderr, "[ dim={}, k={} ]", my_kvs[i].dim, my_kvs[i].size);
-	  fmt::print(stderr, "\n\n");
-	 ****/
+       //else {
 
-	// Now, do the actual reduction in the last dimension using explicit divs and my_kvs vectors
-	diy::RegularMergePartners  my_merge_partner(
-			divs,                // explicit divisions vector
-			my_kvs,              // explicit vector of rounds
-			contiguous);         // contiguous = true: distance doubling
-
-	diy::RegularBroadcastPartners my_bc_partner(
-			divs,                // explicit divisions vector
-			my_kvs,              // explicit vector of rounds
-			contiguous);         // contiguous = true: distance doubling
-
-	// Broadcast the runconfig to the other blocks
-	diy::reduce(master, assigner, my_bc_partner, &bc_pointconfig<Block>);
+          master.foreach([world, verbose, ipc](Block* b, const diy::Master::ProxyWithLink& cp)
+                           {process_block(b, cp, verbose); });
 
 
-	if (verbose) master.foreach([verbose](Block* b, const diy::Master::ProxyWithLink& cp)
-			{print_block(b, cp); });
+          diy::reduce(master,              // Master object
+                      assigner,            // Assigner object
+                      partners,            // RegularMergePartners object
+                      &reduceData<Block>);
 
-	master.foreach([world, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
-			{process_block(b, cp, verbose); });
+          //////This is where the write out happens --- the output file name is part of the blocks config
+          master.foreach([world, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
+                         { write_yoda(b, cp, world.rank(), verbose); });
 
-	// make sure all data are written before clear buffers
-	MPI_Barrier(MPI_COMM_WORLD);
+          // Wipe the buffer to prevent double counting etc.
+          master.foreach([world, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
+                         { clear_buffer(b, cp, verbose); });
+       //}
+   }
 
-	diy::reduce(
-			master,              // Master object
-			assigner,            // Assigner object
-			my_merge_partner,    // RegularMergePartners object
-			&reduceData<Block>);
-
-	//////This is where the write out happens --- the output file name is part of the blocks config
-	master.foreach([nConfigs, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
-			{ write_yoda(b, cp, nConfigs, verbose); });
-
-	// make sure all data are written before clear buffers
-	world.barrier();
-
-	// Wipe the buffer to prevent double counting etc.
-	master.foreach([world, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
-			{ clear_buffer(b, cp, verbose); });
-
-	auto end = std::chrono::system_clock::now();
-	std::chrono::duration<double> diff = end - start;
-	if(world.rank() == 0) {
-		std::time_t tttt = std::time(nullptr);
-		fmt::print(stderr, "FINISHED on Local Time: {} \n",
-				std::put_time(std::localtime(&tttt), "%c %Z") );
-		fmt::print(stderr, "{} FINISHED, Takes {} minutes\n", argv[0], diff.count()/60);
-	}
 
     return 0;
 }
