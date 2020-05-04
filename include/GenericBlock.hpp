@@ -8,8 +8,6 @@
 #undef foreach // This line prevents a clash of definitions of rivet's legacy foreach with that of DIY
 
 #include "HepMC/IO_GenEvent.h"
-#include "Tools.hpp"
-#include <math.h>
 
 using namespace std;
 using namespace Pythia8;
@@ -71,73 +69,6 @@ struct GenericBlock
   // add my buffer data into "other"
   void altreduce_buffer(data_type& other) const { altreduce(other,buffer); }
 
-  std::string dir_name(int dir_idx)
-  {
-	  int mag;
-	  if(dir_idx <= 1) mag = 1;
-	  else {
-		  mag = ceil(log10(dir_idx));
-		  if(dir_idx/pow(10, mag) == 1) mag += 1;
-	  }
-
-	  std::string out("000000");
-	  std::cout << dir_idx << " is with magnitude of " << mag << " --> ";
-	  if(mag >= 6) {
-		  return std::to_string(dir_idx);
-	  } else {
-		  return out.substr(0, 6-mag)+std::to_string(dir_idx);
-	  }
-  }
-
-
-  void init_data(
-		  const diy::Master::ProxyWithLink& cp,
-		  int nConfigs,
-		  int nEvents,
-		  int seed,
-		  std::string& indir,
-		  std::string& pythia_conf, 
-		  std::vector<std::string>& analyses,
-		  std::string& f_out,
-		  bool verbose
-		  )
-  {
-	  if (cp.gid() > nConfigs - 1) return;
-
-	  string dir;
-	  if(indir != ""){
-		// int dim = bounds.min.size();
-		// if(dim < 2) throw(std::out_of_range("at least 2 dimensions"));
-		// int config_idx = (int) bounds.min[dim-2];
-
-		int config_idx = bounds.min[0];
-		if(verbose){
-			fmt::print(stderr, "[{}] Bounds: [{} {} {}] -- [{} {} {}]\n",
-					cp.gid(),
-					bounds.min[0], bounds.min[1], bounds.min[2],
-					bounds.max[0], bounds.max[1], bounds.max[2]);
-		}
-		dir = indir +"/"+ dir_name(config_idx);
-	  } else {
-		 dir = "."; 
-	  }
-	  bool f_ok;
-
-	  if(verbose) {
-		fmt::print(stderr, "reading directory {}\n", dir);
-	  }
-	  std::vector<std::string> physConfig;
-	  physConfig.clear();
-	  f_ok = readConfig(dir+"/"+pythia_conf, physConfig,  verbose);
-	  if(!f_ok) 
-		  throw(std::system_error(ENOENT, std::iostream_category(), dir+"/"+pythia_conf));
-
-
-	  state = {1, nEvents, seed, 1, physConfig, analyses, dir+"/"+f_out};
-
-	  if(verbose) std::cout << state << std::endl;
-
-  }
   // -----------
   // block data
   bounds_type bounds;
@@ -146,7 +77,8 @@ struct GenericBlock
   data_type buffer;
     
   Pythia pythia; // The generator
-  // Event& event = pythia.event;
+  // Shorthand for the event record in pythia.
+  Event& event = pythia.event;
   int nEvents;
   Rivet::AnalysisHandler *ah;
   HepMC::Pythia8ToHepMC ToHepMC;
