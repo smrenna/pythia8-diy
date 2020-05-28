@@ -40,7 +40,7 @@ PointConfigs mkSingleRunConfigs(size_t n_ranks, size_t n_events, size_t base_see
   }
 
   // Set config
-  return std::move(revised);
+  return revised;
 }
 
 PointConfig mkRunConfig(size_t n_ranks, size_t n_events, size_t base_seed, std::vector<std::string> conf, std::vector<std::string> analyses, std::string f_out)

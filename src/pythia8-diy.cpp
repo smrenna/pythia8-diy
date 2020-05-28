@@ -194,13 +194,11 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
   char buffer[512];
   sprintf(buffer, "tmp_%d.yoda", getpid());
   string out_yoda_name(buffer);
-  sprintf(buffer, "tmp_%d.h5", getpid());
-  string out_h5_name(buffer);
   b->ah->writeData(out_yoda_name);
   std::vector<YODA::AnalysisObject*> aos = YODA::ReaderYODA::create().read(out_yoda_name);
-  // YODF5::H5Utils::writeYoda2H5(aos, out_h5_name);
 
   b->data = AnalysisObjects(aos.begin(), aos.end());
+
 
 
   // Debug write out --- uncomment to write each block's YODA file
@@ -209,22 +207,22 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
 
   // This is a bit annoying --- we need to unscale Histo1D and Histo2D beforge the reduction
   // TODO: Figure out whether this is really necessary
-  // for (auto ao : b->data) {
-  //   if (ao->hasAnnotation("ScaledBy"))
-  //   {
-  //     double sc = std::stod(ao->annotation("ScaledBy"));
-  //     if (ao->type()=="Histo1D")
-  //     {
-  //        dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
-  //        dynamic_cast<YODA::Histo1D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
-  //     }
-  //     else if (ao->type()=="Histo2D")
-  //     {
-  //        dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
-  //        dynamic_cast<YODA::Histo2D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
-  //     }
-  //   }
-  // }
+  for (auto ao : b->data) {
+    if (ao->hasAnnotation("ScaledBy"))
+    {
+      double sc = std::stod(ao->annotation("ScaledBy"));
+      if (ao->type()=="Histo1D")
+      {
+         dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
+         dynamic_cast<YODA::Histo1D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+      }
+      else if (ao->type()=="Histo2D")
+      {
+         dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
+         dynamic_cast<YODA::Histo2D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
+      }
+    }
+  }
   auto end = std::chrono::system_clock::now();
 	std::chrono::duration<double> diff = end - start;
   if(verbose){
@@ -235,29 +233,37 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
 
 void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int nConfigs, bool verbose)
 {
- if (verbose) fmt::print(stderr, "[{}] sees write_yoda \n", cp.gid());
- if (cp.gid() > nConfigs - 1 ) return;
+  if (verbose) fmt::print(stderr, "[{}] sees write_yoda \n", cp.gid());
+  if (cp.gid() > nConfigs - 1 ) return;
 
-/***
-    for (auto ao : b->buffer) {
-      if (ao->hasAnnotation("OriginalScaledBy"))
-      //if (ao->hasAnnotation("ScaledBy"))
+
+  for (auto ao : b->buffer) {
+    if (ao->hasAnnotation("OriginalScaledBy"))
+    //if (ao->hasAnnotation("ScaledBy"))
+    {
+      string default_scale = "1.0";
+      double sc = std::stod(ao->annotation("OriginalScaledBy", default_scale));
+      if (ao->type()=="Histo1D")
       {
-        string default_scale = "1.0";
-        double sc = std::stod(ao->annotation("OriginalScaledBy", default_scale));
-        if (ao->type()=="Histo1D")
-        {
-           dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
-        }
-        else if (ao->type()=="Histo2D")
-        {
-           dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
-        }
+          dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
+      }
+      else if (ao->type()=="Histo2D")
+      {
+          dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
       }
     }
-***/
-    if (verbose) fmt::print(stderr, "[{}] -- writing to file {}  \n", cp.gid(), b->state.f_out);
-    YODA::WriterYODA::write(b->state.f_out, b->buffer);
+  }
+
+  if (verbose) fmt::print(stderr, "[{}] -- writing to file {}  \n", cp.gid(), b->state.f_out);
+  YODA::WriterYODA::write(b->state.f_out, b->buffer);
+  std::vector<YODA::AnalysisObject*> aos;
+  for(auto ao: b->buffer){
+    aos.push_back(ao.get());
+  }
+  char buffer[512];
+  sprintf(buffer, "tmp_%d.h5", getpid());
+  string out_h5_name(buffer);
+  YODF5::H5Utils::writeYoda2H5(aos, out_h5_name);
 }
 
 
@@ -277,7 +283,6 @@ int main(int argc, char* argv[])
     
 
     File *hdfoutput_file;
-    size_t nBlocks = 0;
     int threads = 1;
     int runnum = -1;
     int nEvents=1000;
@@ -474,7 +479,7 @@ int main(int argc, char* argv[])
 	divs = orig_partners.divisions();                                    // number of blocks in each dimension
 
 	// modify orig_kvs to get my_kvs
-	for (auto i = 0; i < orig_kvs.size(); i++) {
+	for (int i = 0; i < (int) orig_kvs.size(); i++) {
 		if (orig_kvs[i].dim == dim - 1)                        // keep last dim only
 			my_kvs.push_back(orig_kvs[i]);
   }

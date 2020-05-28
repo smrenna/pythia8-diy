@@ -124,13 +124,13 @@ bool addThisKind(AO_ptr& copy, AO_ptr const& other)
   if(typeid(*bt).hash_code() == typeid(T).hash_code())
     {
       // TODO: this test is causing a lot of warnings at compile time, maybe rewrite?
-      try {auto& nh = dynamic_cast<T&>(*copy) ;} catch (const std::exception& e)
+      try {dynamic_cast<T&>(*copy) ;} catch (const std::exception& e)
       {
         fmt::print(stderr, "\n\n exception in add h1d 1: {} {} {}\n", e.what(), copy->path(), copy->title());
         copy->reset();
         //return false;
       }
-      try {auto const& bh = dynamic_cast<T&>(*other);} catch (const std::exception& e)
+      try {dynamic_cast<T&>(*other);} catch (const std::exception& e)
       {
         fmt::print(stderr, "\n\n exception in add h1d 2: {} {} {}\n", e.what(), other->path(), other->title());
         //return false;
@@ -157,13 +157,13 @@ bool addCounter(AO_ptr& copy, AO_ptr const& other)
   auto const& bt = other.get();
   if(typeid(*bt).hash_code() == typeid(T).hash_code())
     {
-      try {auto& nh = dynamic_cast<T&>(*copy) ;} catch (const std::exception& e)
+      try {dynamic_cast<T&>(*copy) ;} catch (const std::exception& e)
       {
         fmt::print(stderr, "\n\n exception in add h1d 1: {} {} {}\n", e.what(), copy->path(), copy->title());
         copy->reset();
         //return false;
       }
-      try {auto const& bh = dynamic_cast<T&>(*other);} catch (const std::exception& e)
+      try {dynamic_cast<T&>(*other);} catch (const std::exception& e)
       {
         fmt::print(stderr, "\n\n exception in add h1d 2: {} {} {}\n", e.what(), other->path(), other->title());
         //return false;
@@ -186,8 +186,8 @@ bool addScatters(AO_ptr& copy, AO_ptr const& other)
 
   if(typeid(*bt).hash_code() == typeid(T).hash_code())
     {
-      auto& nh = dynamic_cast<T&>(*copy);
-      auto const& bh = dynamic_cast<T&>(*other);
+      // auto& nh = dynamic_cast<T&>(*copy);
+      // auto const& bh = dynamic_cast<T&>(*other);
      //std::cerr << "Warning, no operator += defined for " << bt->type() << "\n";
       return true;
     }

@@ -93,8 +93,8 @@ struct GenericBlock
   void init_data(
 		  const diy::Master::ProxyWithLink& cp,
 		  int nConfigs,
-		  int nEvents,
-		  int seed,
+		  size_t nEvents,
+		  size_t seed,
 		  std::string& indir,
 		  std::string& pythia_conf, 
 		  std::vector<std::string>& analyses,
