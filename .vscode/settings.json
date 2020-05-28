@@ -1,0 +1,14 @@
+{
+    "cmake.configureOnOpen": true,
+    "cmake.configureSettings": {
+        "HIGHFIVE_DIR": "/usr/local",
+        "DIY_INCLUDE_DIRS": "/mnt/d/Documents/Softwares/diy/include",
+        "YODA_DIR": "/usr/local",
+        "RIVET_DIR": "/usr/local",
+        "PYTHIA8_DIR": "/usr/local",
+        "FASTJET_DIR": "/usr/local",
+        "HEPMC_DIR": "/usr/local",
+        "CMAKE_PREFIX_PATH": "/usr/local/lib/cmake"
+    },
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
+}
