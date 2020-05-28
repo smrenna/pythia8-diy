@@ -23,7 +23,6 @@
 #include <diy/reduce-operations.hpp>
 
 
-
 #include "config.hpp"
 #include "GenericBlock.hpp"
 #include "Reduce.hpp"
@@ -49,6 +48,7 @@
 #include <highfive/H5DataSpace.hpp>
 #include <highfive/H5File.hpp>
 
+#include "yodf5/h5utils.hpp"
 
 using namespace std;
 using namespace Pythia8;
@@ -186,11 +186,22 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
 
 
   // Event loop is done, set xsection correctly and normalise histos
-  b->ah->setCrossSection(b->pythia.info.sigmaGen() * 1.0E9);
+  b->ah->setCrossSection(b->pythia.info.sigmaGen() * 1.0E9, b->pythia.info.sigmaErr() * 1.0E9);
   b->ah->finalize();
 
-  // Push histos into block
-  b->data = b->ah->getData();
+  // Rivet 3 does not have getData(),
+  // Save the yoda into a file and read it back.
+  char buffer[512];
+  sprintf(buffer, "tmp_%d.yoda", getpid());
+  string out_yoda_name(buffer);
+  sprintf(buffer, "tmp_%d.h5", getpid());
+  string out_h5_name(buffer);
+  b->ah->writeData(out_yoda_name);
+  std::vector<YODA::AnalysisObject*> aos = YODA::ReaderYODA::create().read(out_yoda_name);
+  // YODF5::H5Utils::writeYoda2H5(aos, out_h5_name);
+
+  b->data = AnalysisObjects(aos.begin(), aos.end());
+
 
   // Debug write out --- uncomment to write each block's YODA file
   //b->ah->writeData(std::to_string((1+npc)*(b->state.seed+cp.gid()))+".yoda");
@@ -232,8 +243,8 @@ void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int nConfigs, bo
       if (ao->hasAnnotation("OriginalScaledBy"))
       //if (ao->hasAnnotation("ScaledBy"))
       {
-        //double sc = std::stod(ao->annotation("ScaledBy"));
-        double sc = std::stod(ao->annotation("OriginalScaledBy"));
+        string default_scale = "1.0";
+        double sc = std::stod(ao->annotation("OriginalScaledBy", default_scale));
         if (ao->type()=="Histo1D")
         {
            dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
@@ -248,61 +259,6 @@ void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int nConfigs, bo
     if (verbose) fmt::print(stderr, "[{}] -- writing to file {}  \n", cp.gid(), b->state.f_out);
     YODA::WriterYODA::write(b->state.f_out, b->buffer);
 }
-
-//void process_block_hepmc(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
-//{
-  //// Explicit desctruction and recreation of pythia --- this is important when running multiple
-  //// physics configs!!! https://stackoverflow.com/questions/1124634/call-destructor-and-then-constructor-resetting-an-object
-  //(&b->pythia)->~Pythia();
-  //new (&b->pythia) Pythia();
-
-  //// Minimise pythia's output
-  //b->pythia.readString("Print:quiet = on");
-
-  //// Configure pythia with a vector of strings
-  //for (auto s  : b->state.conf) b->pythia.readString(s);
-
-  //// Py8 random seed for this block read from point config
-  //b->pythia.readString("Random:setSeed = on");
-  //b->pythia.readString("Random:seed = " + std::to_string(b->state.seed+cp.gid()));
-
-  //// All configurations done, initialise Pythia
-  //b->pythia.init();
-  //// Delete the AnalysisHandlerPtr to ensure there is no memory
-  //if (b->ah) { delete b->ah; }
-
-
-  //// The event loop
-  //b->events.reserve(b->state.num_events);
-  //int nAbort = 5;
-  //int iAbort = 0;
-  //if (verbose) fmt::print(stderr, "[{}] generating {} events\n", cp.gid(),  b->state.num_events);
-  //for (unsigned int iEvent = 0; iEvent < b->state.num_events; ++iEvent) {
-    //if (!b->pythia.next()) {
-      //if (++iAbort < nAbort) continue;
-      //break;
-    //}
-    //HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
-    //b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
-    //b->events.push_back(hepmcevt);
-    //if (iEvent%1000 == 0 && cp.gid()==0) fmt::print(stderr, "[{}]  {}/{} \n", cp.gid(),  iEvent, b->state.num_events);;
-  //}
-
-  //for (auto e : b->events) {
-     ////treeVertex(&e);
-     //e->print();
-  //}
-  //// Push histos into block
-  ////b->data = b->ah->getData();
-
-  //// Debug write out --- uncomment to write each block's YODA file
-  ////b->ah->writeData(std::to_string((1+npc)*(b->state.seed+cp.gid()))+".yoda");
-
-
-  //// This is a bit annoying --- we need to unscale Histo1D and Histo2D beforge the reduction
-  //// TODO: Figure out whether this is really necessary
-//}
-
 
 
 
@@ -377,7 +333,8 @@ int main(int argc, char* argv[])
              max.front()=DataSpace::UNLIMITED;
 	     props.add(Chunking(std::vector<hsize_t>(1,batchsize*size)));
              DataSet ds_nparticles = g_event.createDataSet<int>("nparticles",DataSpace(min,max),props);
-             ds_nparticles.select({std::size_t(world.rank()), 0}).write(data);
+             std::vector<size_t> selections = {std::size_t(world.rank()), 0};
+             ds_nparticles.select(selections).write(data);
              std::cout<<"kkk\n";
              //ds_nparticles.write(data)();
              //hdfoutput_file->close();
