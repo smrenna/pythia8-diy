@@ -21,6 +21,7 @@
 
 #include <type_traits>
 #include <typeinfo>
+#include <unistd.h> // For getpid()
 
 
 #include "config.hpp"
@@ -133,15 +134,17 @@ void process_block_calibration(Block* b, diy::Master::ProxyWithLink const& cp, b
 
 
   // Event loop is done, set xsection correctly and normalise histos
-  b->ah->setCrossSection(b->pythia.info.sigmaGen() * 1.0E9);
+  b->ah->setCrossSection(b->pythia.info.sigmaGen() * 1.0E9, b->pythia.info.sigmaErr()*1.0E9);
   b->ah->finalize();
 
-  // Push histos into block
-  b->data = b->ah->getData();
-
-  // Debug write out --- uncomment to write each block's YODA file
-  //b->ah->writeData(std::to_string((1+npc)*(b->state.seed+cp.gid()))+".yoda");
-
+  // Rivet 3 does not have getData(),
+  // Save the yoda into a file and read it back.
+  char buffer[512];
+  sprintf(buffer, "yoda_%d.root", getpid());
+  string out_yoda_name(buffer);
+  b->ah->writeData(out_yoda_name);
+  std::vector<YODA::AnalysisObject*> aos = YODA::ReaderYODA::create().read(out_yoda_name);
+  b->data = AnalysisObjects(aos.begin(), aos.end());
 
   // This is a bit annoying --- we need to unscale Histo1D and Histo2D beforge the reduction
   // TODO: Figure out whether this is really necessary

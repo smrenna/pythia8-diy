@@ -138,7 +138,7 @@ bool addThisKind(AO_ptr& copy, AO_ptr const& other)
       auto& nh = dynamic_cast<T&>(*copy);
       auto const& bh = dynamic_cast<T&>(*other); // Cannot be const when calling scaleW
       nh+=bh;
-      if (nh.hasAnnotation("OriginalScaledBy"))
+      if (nh.hasAnnotation("OriginalScaledBy") && bh.hasAnnotation("OriginalScaledBy"))
       {
         double sc_n = std::stod(nh.annotation("OriginalScaledBy"));
         double sc_b = std::stod(bh.annotation("OriginalScaledBy"));
