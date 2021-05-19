@@ -22,8 +22,9 @@ cd code/pythia83
 wget https://github.com/smrenna/pythia83/raw/main/$VERSION
 tar xzf $VERSION --strip-components 1
 ./configure --with-fastjet3=$BIGDIR --with-hepmc2=$BIGDIR \
-   --with-highfive=/wclustre/sherpa/mrenna/pythia8-diy/code/HighFive --with-hdf5=$HDF5_INC
-cp ../../patch/LH*.h include/PythiaPlugins/
+   --with-highfive=/wclustre/sherpa/mrenna/pythia8-diy/code/HighFive --with-hdf5=$HDF5_INC \
+   --cxx=/opt/ohpc/pub/mpi/mpich-gnu8-ohpc/3.3.1/bin/mpic++
+cp ../../patch/LH*.h include/Pythia8Plugins/
 make -j 11
 rm -rf $VERSION
 cd -
