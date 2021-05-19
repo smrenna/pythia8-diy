@@ -15,14 +15,17 @@ rm v2.0.tar.gz
 cd -
 
 BIGDIR=/wclustre/sherpa/mrenna/local
+VERSION=pythia83-vincia-merging-bugfix.tar.gz 
+VERSION=pythia83-pythia8305.tar.gz
 mkdir -p code/pythia83
 cd code/pythia83
-wget https://github.com/smrenna/pythia83/raw/main/pythia83-vincia-merging-bugfix.tar.gz 
-tar xzf pythia83-vincia-merging-bugfix.tar.gz --strip-components 1
+wget https://github.com/smrenna/pythia83/raw/main/$VERSION
+tar xzf $VERSION --strip-components 1
 ./configure --with-fastjet3=$BIGDIR --with-hepmc2=$BIGDIR \
    --with-highfive=/wclustre/sherpa/mrenna/pythia8-diy/code/HighFive --with-hdf5=$HDF5_INC
+cp ../../patch/LH*.h include/PythiaPlugins/
 make -j 11
-rm -rf pythia83-vincia-merging-bugfix.tar.gz 
+rm -rf $VERSION
 cd -
 
 rm -rf build
