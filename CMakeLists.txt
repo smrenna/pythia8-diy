@@ -7,7 +7,7 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-set(CMAKE_CXX_FLAGS "-Wall -ggdb")# -fPermissive")
+set(CMAKE_CXX_FLAGS "-Wall -ggdb -std=c++11")# -fPermissive")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
@@ -16,7 +16,7 @@ set(CMAKE_CXX_STANDARD 11)
 # OSX flags
 if                          (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   add_definitions           (-DMAC_OSX)
-  set                       (CMAKE_MACOSX_RPATH on)
+  set                       (CMAKE_MACOSX_RPATH off)
 
     # --- following RPATH settings are for Sierra w/ Clang, hopefully they don't hurt other versions
     # ref: https://cmake.org/Wiki/CMake_RPATH_handling
@@ -85,6 +85,8 @@ include_directories         (${CMAKE_CURRENT_SOURCE_DIR}/include
                             ${HIGHFIVE_DIR}/include 
                             ${PYTHIA8_DIR}/include
                             ${FASTJET_DIR}/include
+                            ${HDF5_INC}
+                            SYSTEM ${HDF5_INC}
                              SYSTEM ${MPI_INCLUDE_PATH}
                             )
 
@@ -103,8 +105,8 @@ set                         (libraries
 			     ${YODA_DIR}/lib/libYODA${CMAKE_SHARED_LIBRARY_SUFFIX}
 			     ${RIVET_DIR}/lib/libRivet${CMAKE_SHARED_LIBRARY_SUFFIX}
                              ${HEPMC_DIR}/lib/libHepMC${CMAKE_SHARED_LIBRARY_SUFFIX}
-                             ${PYTHIA8_DIR}/lib/libpythia8${CMAKE_SHARED_LIBRARY_SUFFIX}
                              ${FASTJET_DIR}/lib/libfastjet${CMAKE_SHARED_LIBRARY_SUFFIX}
+                             ${PYTHIA8_DIR}/lib/libpythia8${CMAKE_SHARED_LIBRARY_SUFFIX}
                              )
 
 # Test if user has supplied -DHIGHFIVE_DIR                        
@@ -137,13 +139,6 @@ if(NOT HEPMC_LIB)
     message(FATAL_ERROR "HEPMC library not found --- check -DHEPMC_DIR")
 endif()
 
-find_library(PYTHIA8_LIB
-    NAMES libpythia8${CMAKE_SHARED_LIBRARY_SUFFIX}
-    HINTS "${PYTHIA8_DIR}/lib"
-    )
-if(NOT PYTHIA8_LIB)
-    message(FATAL_ERROR "PYTHIA8 library not found --- check -DPYTHIA8_DIR")
-endif()
 find_library(FASTJET_LIB
     NAMES libfastjet${CMAKE_SHARED_LIBRARY_SUFFIX}
     HINTS "${FASTJET_DIR}/lib"
@@ -151,10 +146,17 @@ find_library(FASTJET_LIB
 if(NOT FASTJET_LIB)
     message(FATAL_ERROR "FASTJET library not found --- check -DFASTJET_DIR")
 endif()
+find_library(PYTHIA8_LIB
+    NAMES libpythia8${CMAKE_SHARED_LIBRARY_SUFFIX}
+    HINTS "${PYTHIA8_DIR}/lib"
+    )
+if(NOT PYTHIA8_LIB)
+    message(FATAL_ERROR "PYTHIA8 library not found --- check -DPYTHIA8_DIR")
+endif()
 
 # If all found, add build target
-add_subdirectory        (src)
-
+add_subdirectory        (src) 
+add_subdirectory        (withlheh5) 
 
 ## Test if user has supplied -DHIGHFIVE_DIR                        
 if                          (LHEH5_DIR AND HIGHFIVE_DIR)

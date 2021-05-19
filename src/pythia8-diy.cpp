@@ -43,6 +43,8 @@
 #include <highfive/H5DataSpace.hpp>
 #include <highfive/H5File.hpp>
 
+#include "H5FDmpio.h"
+
 
 using namespace std;
 using namespace Pythia8;
@@ -169,11 +171,33 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
 
 
   // Event loop is done, set xsection correctly and normalise histos
-  b->ah->setCrossSection(b->pythia.info.sigmaGen() * 1.0E9);
+  //SM b->ah->setCrossSection(b->pythia.info.sigmaGen() * 1.0E9);
   b->ah->finalize();
 
+  auto raos = b->ah->getRivetAOs();
+  // This is where we store the AOs to be written.
+  vector<YODA::AnalysisObjectPtr> output;
+
+  // First get all multiwight AOs
+  output.reserve(raos.size());
+
+  for ( auto rao : raos ) {
+    rao.get()->setActiveFinalWeightIdx(0);
+    if ( rao->path().find("/TMP/") != string::npos ) continue;
+    double sc = 1.0;
+    if (rao->hasAnnotation("ScaledBy")) {
+      sc = std::stod(rao->annotation("ScaledBy"));
+    }
+   // fmt::print(stderr, "sc [{}]   \n", sc);
+    auto yptr = rao.get()->activeYODAPtr();
+    output.push_back(yptr);
+  }
+
+  b-> data = output;
+
+
   // Push histos into block
-  b->data = b->ah->getData();
+  //b->data = b->ah->getData();
 
   // Debug write out --- uncomment to write each block's YODA file
   //b->ah->writeData(std::to_string((1+npc)*(b->state.seed+cp.gid()))+".yoda");
@@ -344,7 +368,7 @@ int main(int argc, char* argv[])
     //int data[1][2] = {{world.rank(), world.rank()}};
     std::vector<int> data(50, world.rank());
 
-    if (writehepmc) {
+/*    if (writehepmc) {
              hdfoutput_file = new File(out_file,
 			File::ReadWrite|File::Create|File::Truncate,
 			MPIOFileDriver(MPI_COMM_WORLD,MPI_INFO_NULL));
@@ -364,7 +388,7 @@ int main(int argc, char* argv[])
              //hdfoutput_file->close();
              //
 
-    }
+    } */
     
     std::vector<std::string> physConfig;
     std::vector<std::vector<std::string> > physConfigs;

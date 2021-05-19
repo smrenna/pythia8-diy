@@ -135,9 +135,29 @@ bool addThisKind(AO_ptr& copy, AO_ptr const& other)
         fmt::print(stderr, "\n\n exception in add h1d 2: {} {} {}\n", e.what(), other->path(), other->title());
         //return false;
       }
+
+
       auto& nh = dynamic_cast<T&>(*copy);
       auto const& bh = dynamic_cast<T&>(*other); // Cannot be const when calling scaleW
+     /* fmt::print(stderr, "\n\n in add h1d 1: {} {}\n", copy->path(), copy->title());
+      fmt::print(stderr, "\n\n in add h1d 1: {} {}\n", other->path(), other->title());
+      fmt::print(stderr, "\n adding histos {}  {} : \n",nh.hasAnnotation("ScaledBy"),bh.hasAnnotation("ScaledBy"));
+*/
+
+ /*     double scaledBy = 1.0;
+      if( nh.hasAnnotation("ScaledBy") ){
+         scaledBy = std::stod(nh.annotation("ScaledBy"));
+         fmt::print(stderr, "\n nh has scale {} : \n",scaledBy);
+      }
+
+      double toAddScaledBy = 1.0;
+      if( bh.hasAnnotation("ScaledBy") ){
+         double toAddScaledBy = std::stod(bh.annotation("ScaledBy"));
+         fmt::print(stderr, "\n bh has scale {} : \n",toAddScaledBy);
+      }
+*/
       nh+=bh;
+
       if (nh.hasAnnotation("OriginalScaledBy"))
       {
         double sc_n = std::stod(nh.annotation("OriginalScaledBy"));
@@ -186,8 +206,8 @@ bool addScatters(AO_ptr& copy, AO_ptr const& other)
 
   if(typeid(*bt).hash_code() == typeid(T).hash_code())
     {
-      auto& nh = dynamic_cast<T&>(*copy);
-      auto const& bh = dynamic_cast<T&>(*other);
+    //  auto& nh = dynamic_cast<T&>(*copy);
+    //  auto const& bh = dynamic_cast<T&>(*other);
      //std::cerr << "Warning, no operator += defined for " << bt->type() << "\n";
       return true;
     }
