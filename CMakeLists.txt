@@ -7,11 +7,11 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-set(CMAKE_CXX_FLAGS "-Wall -ggdb -std=c++11")# -fPermissive")
+set(CMAKE_CXX_FLAGS "-Wall -ggdb -std=c++14")# -fPermissive")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 
 # OSX flags
 if                          (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -156,7 +156,7 @@ endif()
 
 # If all found, add build target
 add_subdirectory        (src) 
-add_subdirectory        (withlheh5) 
+#add_subdirectory        (withlheh5) 
 
 ## Test if user has supplied -DHIGHFIVE_DIR                        
 if                          (LHEH5_DIR AND HIGHFIVE_DIR)

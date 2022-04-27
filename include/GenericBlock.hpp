@@ -12,6 +12,7 @@
 using namespace std;
 using namespace Pythia8;
 
+
 // --------------- generic block definition ----------------
 // B = Bounds definition
 // S = State definition
@@ -57,8 +58,10 @@ struct GenericBlock
   // a = a + b    (might want to permit other combining function to be passed in here)
   static void reduce(data_type& a, data_type const& b)
   {
-    std::transform(a.cbegin(),a.cend(), b.cbegin(),
-		   a.begin(), std::plus<typename data_type::value_type>());
+//SM this is the place to remove the std::plus operator!
+//    std::transform(a.cbegin(),a.cend(), b.cbegin(),
+//		   a.begin(), std::plus<typename data_type::value_type>());
+    addVectors(a,b);
   }
   // add "other" into my block data
   void reduce(data_type const& other) { reduce(data,other); }

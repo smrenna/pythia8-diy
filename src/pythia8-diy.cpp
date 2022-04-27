@@ -35,6 +35,7 @@
 #include "Pythia8/Pythia.h"
 #include "Pythia8Plugins/HepMC2.h"
 #include "Rivet/AnalysisHandler.hh"
+//#include "Rivet/Analysis.hh"
 #undef foreach // This line prevents a clash of definitions of rivet's legacy foreach with that of DIY
 
 #include "HepMC/IO_GenEvent.h"
@@ -49,10 +50,10 @@
 using namespace std;
 using namespace Pythia8;
 using namespace HighFive;
+using namespace Rivet;
 #include "opts.h"
 
 using namespace std;
-
 
 typedef diy::DiscreteBounds Bounds;
 typedef diy::RegularGridLink RCLink;
@@ -169,58 +170,13 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
     if (iEvent%1000 == 0 && cp.gid()==0) fmt::print(stderr, "[{}]  {}/{} \n", cp.gid(),  iEvent, b->state.num_events);;
   }
 
-
   // Event loop is done, set xsection correctly and normalise histos
   //SM b->ah->setCrossSection(b->pythia.info.sigmaGen() * 1.0E9);
+  b->ah->setCrossSection(b->pythia.info.sigmaGen() * 1.0E9,b->pythia.info.sigmaErr() * 1.0E9);
   b->ah->finalize();
 
-  auto raos = b->ah->getRivetAOs();
-  // This is where we store the AOs to be written.
-  vector<YODA::AnalysisObjectPtr> output;
+  b-> data = b->ah->getYodaAOs(true);
 
-  // First get all multiwight AOs
-  output.reserve(raos.size());
-
-  for ( auto rao : raos ) {
-    rao.get()->setActiveFinalWeightIdx(0);
-    if ( rao->path().find("/TMP/") != string::npos ) continue;
-    double sc = 1.0;
-    if (rao->hasAnnotation("ScaledBy")) {
-      sc = std::stod(rao->annotation("ScaledBy"));
-    }
-   // fmt::print(stderr, "sc [{}]   \n", sc);
-    auto yptr = rao.get()->activeYODAPtr();
-    output.push_back(yptr);
-  }
-
-  b-> data = output;
-
-
-  // Push histos into block
-  //b->data = b->ah->getData();
-
-  // Debug write out --- uncomment to write each block's YODA file
-  //b->ah->writeData(std::to_string((1+npc)*(b->state.seed+cp.gid()))+".yoda");
-
-
-  // This is a bit annoying --- we need to unscale Histo1D and Histo2D beforge the reduction
-  // TODO: Figure out whether this is really necessary
-  for (auto ao : b->data) {
-    if (ao->hasAnnotation("ScaledBy"))
-    {
-      double sc = std::stod(ao->annotation("ScaledBy"));
-      if (ao->type()=="Histo1D")
-      {
-         dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
-         dynamic_cast<YODA::Histo1D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
-      }
-      else if (ao->type()=="Histo2D")
-      {
-         dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
-         dynamic_cast<YODA::Histo2D&>(*ao).addAnnotation("OriginalScaledBy", 1./sc);
-      }
-    }
-  }
 }
 
 
@@ -228,22 +184,7 @@ void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int rank, bool v
 {
  if (verbose) fmt::print(stderr, "[{}] -- rank {} sees write_yoda \n", cp.gid(), rank);
   if (rank==0 && cp.gid()==0) {
-    for (auto ao : b->buffer) {
-      if (ao->hasAnnotation("OriginalScaledBy"))
-      //if (ao->hasAnnotation("ScaledBy"))
-      {
-        //double sc = std::stod(ao->annotation("ScaledBy"));
-        double sc = std::stod(ao->annotation("OriginalScaledBy"));
-        if (ao->type()=="Histo1D")
-        {
-           dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
-        }
-        else if (ao->type()=="Histo2D")
-        {
-           dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
-        }
-      }
-    }
+  
     if (verbose) fmt::print(stderr, "[{}] -- writing to file {}  \n", cp.gid(), b->state.f_out);
     YODA::WriterYODA::write(b->state.f_out, b->buffer);
   }

@@ -122,4 +122,5 @@ struct ConfigBlockAdder
 
   diy::Master&  master;
 };
+
 #endif
