@@ -123,60 +123,33 @@ namespace diy {
 
 namespace YODA {
   void addVectors(AnalysisObjects &a, AnalysisObjects const &b) {  
-    std::vector<string> aofiles;
-    //
-    std::ostringstream stream_a;
 
+    std::ostringstream stream_a;
     YODA::WriterYODA::write(stream_a, begin(a), end(a));
     std::string s_a = stream_a.str();
 
     std::ostringstream stream_b;
     YODA::WriterYODA::write(stream_b, begin(b), end(b));
-
     std::string s_b = stream_b.str();
 
-    aofiles.push_back(s_a);
-    aofiles.push_back(s_b);
+    bool preload(false);
+    string fmt("yoda");
+
+    std::istringstream stream(s_a);
 
     AH_ptr ahmerge;
-    vector<string> delopts, addopts, matches, unmatches;
-    bool equiv(true);
-    //bool equiv;
-    vector<string> optAnas;
-    vector<string> optKeys;
-    vector<string> optVals;      
-    bool overwrite_xsec = false;
-    map<string, YODA::AnalysisObjectPtr> allaos;
-    map<string, pair<double,double> > allxsecs;
-    for (auto file : aofiles) {
+    ahmerge.readData(stream, fmt, preload);
 
-      double fileweight = 1.0;
-      vector<YODA::AnalysisObject*> aos_raw;      
-      map<string,YODA::AnalysisObject*> raw_map;
-      try {
-        std::istringstream stream(file);
-        aos_raw = YODA::ReaderYODA::read(stream);
-        for (YODA::AnalysisObject* aor : aos_raw) {
-          const string& aopath = aor->path();
-          raw_map[aopath] = aor;
-        }
-      }
-      catch (...) { //< YODA::ReadError&
-        cout << "Unexpected error in reading file: " + file <<endl;
-      }
-      if (raw_map.empty()) {
-        cout << "No AOs selected from file: " << file << endl;;
-        continue;
-      }
-      // merge AOs from current file into "allaos"
-      ahmerge.mergeAOS(allaos, raw_map, allxsecs, delopts, optAnas, optKeys, optVals,
-                       equiv, false , fileweight);
-    }
-    ahmerge.setupReentrantRun(allaos, allxsecs, equiv);
+    std::istringstream streamp(s_b);
+
+    AH_ptr ahtemp;
+    ahtemp.readData(streamp, fmt, preload);
+
+    ahmerge.merge( ahtemp );
     ahmerge.finalize();
-    a.resize(0);
-    for( auto x : ahmerge.getYodaAOs(true) )
-      a.push_back( x );
+
+    a = ahmerge.getYodaAOs(true);
+    
   };
 }   
 
