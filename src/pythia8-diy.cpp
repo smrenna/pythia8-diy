@@ -34,6 +34,7 @@
 
 #include "Pythia8/Pythia.h"
 #include "Pythia8Plugins/HepMC2.h"
+#include "Pythia8Plugins/ResonanceDecayFilterHook.h"
 #include "Rivet/AnalysisHandler.hh"
 //#include "Rivet/Analysis.hh"
 #undef foreach // This line prevents a clash of definitions of rivet's legacy foreach with that of DIY
@@ -127,6 +128,11 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
   if (verbose) b->pythia.readString("Print:quiet = off");
   else b->pythia.readString("Print:quiet = on");
 
+
+  // UserHooks wrapper
+  auto myUserHooks = make_shared<ResonanceDecayFilterHook>(b->pythia.settings);
+  b->pythia.setUserHooksPtr(myUserHooks);
+
   // Configure pythia with a vector of strings
   for (auto s  : b->state.conf) b->pythia.readString(s);
 
@@ -134,8 +140,9 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
   b->pythia.readString("Random:setSeed = on");
   b->pythia.readString("Random:seed = " + std::to_string(b->state.seed+cp.gid()));
 
+
   // All configurations done, initialise Pythia
-  //b->pythia.initPtrs(); // TODO --- is this really necessary here?
+//  b->pythia.initPtrs(); // TODO --- is this really necessary here?
   b->pythia.init();
   //fmt::print(stderr, "[{}] ### W {} - T {} - S {}  \n", cp.gid(), b->pythia.info.weight(), b->pythia.info.nTried(), b->pythia.info.sigmaGen() * 1.0E9);
 
@@ -285,6 +292,7 @@ int main(int argc, char* argv[])
                                                            "verbose",
                                                            "verbose output");
     bool writehepmc   = ops >> Present('w', "writehepmc", "write hepmc events");
+    
     ops >> Option('t', "thread",    threads,   "Number of threads");
     ops >> Option('n', "nevents",   nEvents,   "Number of events to generate in total");
     ops >> Option('b', "nblocks",   nBlocks,   "Number of blocks");
@@ -300,6 +308,11 @@ int main(int argc, char* argv[])
         std::cout << ops;
         return 1;
     }
+
+    bool eventOverride = (nEvents != 1000) ? true : false;
+    bool  seedOverride = (seed != 1234) ? true: false;
+    
+    cout << "override = " << eventOverride << " " << seedOverride << endl;
 
     int nConfigs;
 
@@ -330,15 +343,44 @@ int main(int argc, char* argv[])
              //
 
     } */
-    
+
+    std::vector<int> iSeeds;
+    std::vector<int> numEvents;
     std::vector<std::string> physConfig;
     std::vector<std::vector<std::string> > physConfigs;
     std::vector<std::string> out_files;
     bool f_ok;
+    // copy of Pythia for reading parameters
+    Pythia pyDumb;
     if( world.rank()==0 ) {
        // Program logic: check whether a single parameter file has been given or
        // a directory.
        f_ok = readConfig(pfile, physConfig, verbose);
+       if( f_ok ) {
+	 int iNumSave  = pyDumb.settings.mode("Main:numberOfEvents");
+         int iSeedSave = pyDumb.settings.mode("Random:seed");
+         bool iSetSave = pyDumb.settings.flag("Random:setSeed");
+	 pyDumb.readFile(pfile);
+	 int iNum  = pyDumb.settings.mode("Main:numberOfEvents");
+	 int iSeed = pyDumb.settings.mode("Random:seed");
+	 bool iSet = pyDumb.settings.flag("Random:setSeed");
+	 cout << iNum << " " << iSeed << " " << iSet << endl;
+	 // Reset to default settings
+	 pyDumb.settings.mode("Main:numberOfEvents",iNumSave);
+	 pyDumb.settings.mode("Random:seed",iSeedSave);
+	 pyDumb.settings.flag("Random:setSeed",iSetSave);
+	 // Work out the logic for using the seed/events in the params
+         if( seedOverride || !iSet ) {
+           iSeeds.push_back( seed );
+         } else {
+           iSeeds.push_back( iSet );
+         }
+         if( eventOverride ) {
+           numEvents.push_back( nEvents );
+         } else {
+           numEvents.push_back( iNum );
+         }
+       }
        if (!f_ok) {
           // Use glob to look for files in directory
           std::string pattern = indir + "/*/" + pfile;
@@ -349,8 +391,31 @@ int main(int argc, char* argv[])
              physConfig.clear();
              bool this_ok = readConfig(f, physConfig, verbose);
              if (this_ok) {
-                physConfigs.push_back(physConfig);
-                out_files.push_back(f+".yoda");
+	       int iNumSave  = pyDumb.settings.mode("Main:numberOfEvents");
+	       int iSeedSave = pyDumb.settings.mode("Random:seed");
+	       bool iSetSave = pyDumb.settings.flag("Random:setSeed");
+	       pyDumb.readFile(f);
+	       int iNum  = pyDumb.settings.mode("Main:numberOfEvents");
+	       int iSeed = pyDumb.settings.mode("Random:seed");
+	       bool iSet = pyDumb.settings.flag("Random:setSeed");
+	       cout << iNum << " " << iSeed << " " << iSet << endl;
+	       // Reset to default settings
+	       pyDumb.settings.mode("Main:numberOfEvents",iNumSave);
+	       pyDumb.settings.mode("Random:seed",iSeedSave);
+	       pyDumb.settings.flag("Random:setSeed",iSetSave);
+	       // Work out the logic for using the seed/events in the params
+               if( seedOverride || !iSet ) {
+                 iSeeds.push_back( seed );
+               } else {
+                 iSeeds.push_back( iSet );
+               }
+               if( eventOverride ) {
+                 numEvents.push_back( nEvents );
+               } else {
+                 numEvents.push_back( iNum );
+               }               
+	       physConfigs.push_back(physConfig);
+	       out_files.push_back(f+".yoda");
              }
           }
        } 
@@ -411,7 +476,8 @@ int main(int argc, char* argv[])
     PointConfig pc;
     for (int ipc=0;ipc<nConfigs;++ipc) {
        if (world.rank()==0) {
-          pc = mkRunConfig(blocks, nEvents, seed, physConfigs[ipc], analyses, out_files[ipc]);
+          pc = mkRunConfig(blocks, numEvents[ipc], iSeeds[ipc], physConfigs[ipc],
+			   analyses, out_files[ipc]);
        }
 
        // We need to tell the first block about the new configuration
