@@ -312,7 +312,7 @@ int main(int argc, char* argv[])
     }
 
     bool eventOverride(false);
-    if( nEvents == 0 ) return 1;
+    if( nEvents == 0 ) return 0;
     if( nEvents > 0 ) {
       eventOverride = true;
     } else {
