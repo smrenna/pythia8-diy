@@ -370,10 +370,10 @@ int main(int argc, char* argv[])
 	 pyDumb.settings.mode("Random:seed",iSeedSave);
 	 pyDumb.settings.flag("Random:setSeed",iSetSave);
 	 // Work out the logic for using the seed/events in the params
-         if( seedOverride || !iSet ) {
+         if( iSeed < 0 || seedOverride || !iSet ) {
            iSeeds.push_back( seed );
          } else {
-           iSeeds.push_back( iSet );
+           iSeeds.push_back( iSeed );
          }
          if( eventOverride ) {
            numEvents.push_back( nEvents );
@@ -404,10 +404,10 @@ int main(int argc, char* argv[])
 	       pyDumb.settings.mode("Random:seed",iSeedSave);
 	       pyDumb.settings.flag("Random:setSeed",iSetSave);
 	       // Work out the logic for using the seed/events in the params
-               if( seedOverride || !iSet ) {
+               if( iSeed < 0 || seedOverride || !iSet ) {
                  iSeeds.push_back( seed );
                } else {
-                 iSeeds.push_back( iSet );
+                 iSeeds.push_back( iSeed );
                }
                if( eventOverride ) {
                  numEvents.push_back( nEvents );
