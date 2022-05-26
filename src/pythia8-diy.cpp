@@ -279,8 +279,10 @@ int main(int argc, char* argv[])
     size_t nBlocks = 0;
     int threads = 1;
     int runnum = -1;
-    int nEvents=1000;
-    size_t seed=1234;
+    int nEvents=-1;
+    int nEventsDefault = 1000;
+    int seed=-1;
+    int seedDefault = 1234;
     vector<std::string> analyses;
     std::string out_file="diy.yoda";
     std::string pfile="runPythia.cmd";
@@ -309,40 +311,25 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    bool eventOverride = (nEvents != 1000) ? true : false;
-    bool  seedOverride = (seed != 1234) ? true: false;
-    
-    cout << "override = " << eventOverride << " " << seedOverride << endl;
+    bool eventOverride(false);
+    if( nEvents == 0 ) return 1;
+    if( nEvents > 0 ) {
+      eventOverride = true;
+    } else {
+      nEvents = nEventsDefault;
+    }
+    bool seedOverride(false);
+    if( seed > 0 ) {
+      seedOverride = true;
+    } else {
+      seed = seedDefault;
+    }
 
     int nConfigs;
 
     int batchsize=10;
 
-
-    //int data[1][2] = {{world.rank(), world.rank()}};
     std::vector<int> data(50, world.rank());
-
-/*    if (writehepmc) {
-             hdfoutput_file = new File(out_file,
-			File::ReadWrite|File::Create|File::Truncate,
-			MPIOFileDriver(MPI_COMM_WORLD,MPI_INFO_NULL));
-             Group g_event = hdfoutput_file->createGroup("event");
-
-             size_t size(world.size());
-             std::vector<size_t> min(1,size);
-             min.front()*=nEvents;
-             std::vector<size_t> max(min);
-             DataSetCreateProps props;
-             max.front()=DataSpace::UNLIMITED;
-	     props.add(Chunking(std::vector<hsize_t>(1,batchsize*size)));
-             DataSet ds_nparticles = g_event.createDataSet<int>("nparticles",DataSpace(min,max),props);
-             ds_nparticles.select({std::size_t(world.rank()), 0}).write(data);
-             std::cout<<"kkk\n";
-             //ds_nparticles.write(data)();
-             //hdfoutput_file->close();
-             //
-
-    } */
 
     std::vector<int> iSeeds;
     std::vector<int> numEvents;
@@ -364,7 +351,6 @@ int main(int argc, char* argv[])
 	 int iNum  = pyDumb.settings.mode("Main:numberOfEvents");
 	 int iSeed = pyDumb.settings.mode("Random:seed");
 	 bool iSet = pyDumb.settings.flag("Random:setSeed");
-	 cout << iNum << " " << iSeed << " " << iSet << endl;
 	 // Reset to default settings
 	 pyDumb.settings.mode("Main:numberOfEvents",iNumSave);
 	 pyDumb.settings.mode("Random:seed",iSeedSave);
@@ -398,7 +384,6 @@ int main(int argc, char* argv[])
 	       int iNum  = pyDumb.settings.mode("Main:numberOfEvents");
 	       int iSeed = pyDumb.settings.mode("Random:seed");
 	       bool iSet = pyDumb.settings.flag("Random:setSeed");
-	       cout << iNum << " " << iSeed << " " << iSet << endl;
 	       // Reset to default settings
 	       pyDumb.settings.mode("Main:numberOfEvents",iNumSave);
 	       pyDumb.settings.mode("Random:seed",iSeedSave);
