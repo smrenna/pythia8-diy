@@ -19,8 +19,6 @@
 #include <diy/partners/broadcast.hpp>
 #include <diy/reduce-operations.hpp>
 
-//#include "PtjTMSdefinitionHooks.h" // Stefan's unlops hook
-
 #include "config.hpp"
 #include "GenericBlock.hpp"
 #include "Reduce.hpp"
@@ -34,7 +32,13 @@
 
 #include "Pythia8/Pythia.h"
 #include "Pythia8/LHEF3.h"
+#include "Pythia8/Pythia.h"
+#ifndef HEPMC2
+#include "Pythia8Plugins/HepMC3.h"
+#else
 #include "Pythia8Plugins/HepMC2.h"
+#endif
+//#include "Pythia8Plugins/HepMC2.h"
 #include "Pythia8Plugins/LHEH5.h"
 #include "Pythia8Plugins/LHAHDF5.h"
 // Include UserHooks for Jet Matching.
@@ -42,7 +46,8 @@
 // Include UserHooks for randomly choosing between integrated and
 // non-integrated treatment for unitarised merging.
 #include "Pythia8Plugins/aMCatNLOHooks.h"
-//
+// For powheg-style merging
+#include "Pythia8Plugins/PowhegHooks.h"
 //
 #include "Rivet/AnalysisHandler.hh"
 #undef foreach // This line prevents a clash of definitions of rivet's legacy foreach with that of DIY
@@ -139,6 +144,9 @@ void process_block_lhe_performance_same(Block* b, diy::Master::ProxyWithLink con
 }
 void process_block_lhe_performance(Block* b, diy::Master::ProxyWithLink const& cp, int size, int rank,  bool verbose, int npc, string in_file, int nMax)
 {
+
+  // Do we need explicit destruction and recreation of Pythia?
+
   // Minimise pythia's output
   b->pythia.readString("Print:quiet = on");
 
@@ -165,6 +173,9 @@ void process_block_lhe_performance(Block* b, diy::Master::ProxyWithLink const& c
   b->pythia.settings.mode("Beams:frameType", 5);
   // Give the external reader to Pythia
   b->pythia.setLHAupPtr(lhaUpPtr);
+
+  shared_ptr<PowhegHooks> powhegHooks;
+  b->pythia.addUserHooksPtr( powhegHooks );
 
 //  double sigmaTotal  = 0.;
 //  double errorTotal  = 0.;
@@ -208,9 +219,6 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
       //fastjet::ClusterSequence ___;
       //___.set_fastjet_banner_stream(0);
    //}
-  // This makes rivet only report ERRORs
-  // TODO: can we have a global flag to steer verbosity of all moving parts?
-  if (!verbose) Rivet::Log::setLevel("Rivet", Rivet::Log::WARNING);
 
   // Minimise pythia's output
   if (verbose) b->pythia.readString("Print:quiet = off");
@@ -241,6 +249,11 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   b->pythia.setLHAupPtr(lhaUpPtr);
 
   lhaUpPtr->setBatchSize( batchSize );
+
+  // PowHeg hook
+  shared_ptr<PowhegHooks> powhegHooks;
+  b->pythia.addUserHooksPtr( powhegHooks );
+
   // All configurations done, initialise Pythia
   b->pythia.init();
 
@@ -257,6 +270,7 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
   
   b->ah = new Rivet::AnalysisHandler;
   b->ah->setIgnoreBeams();
+  Rivet::Log::setLevel("Rivet", Rivet::Log::ERROR);
 
   // Add all analyses to rivet
   // TODO: we may want to feed the "ignore beams" switch as well
@@ -309,8 +323,6 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
 
        HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
 
-       
-       // weight push_back
        // Work with weighted (LHA strategy=-4) events.
        //double normhepmc = 1.;
        //if (abs(b->pythia.info.lhaStrategy()) == 4)  // Triggering in l 128
@@ -320,14 +332,11 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
        //else
          ////normhepmc = xs / double(1e9*nEvent);
          //normhepmc = xs / double(LHAup->nTrials());
-
-       // SM probably not getTrials, but total number of events in H5 file
        double normhepmc = 1. / double(lhaUpPtr->getTrials()); //
        normhepmc = 1.0;
 
-
 // SM comment out temporarily until I understand weights
-       hepmcevt->weights().push_back(evtweight*normhepmc);
+//       hepmcevt->weights().push_back(evtweight*normhepmc);
        if (verbose) fmt::print(stderr, "[{}] norm weight {} \n", cp.gid(), evtweight*normhepmc);
        b->ToHepMC.set_print_inconsistency(false);
        b->ToHepMC.set_free_parton_exception(false);
@@ -338,20 +347,19 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
        errorTotal  += pow2(evtweight*normhepmc);
        errorSample += pow2(evtweight*normhepmc);
        // Report cross section to hepmc
-       HepMC::GenCrossSection xsec;
+//       HepMC::GenCrossSection xsec;
 // SM comment out temporarily until I understand weights
 //       xsec.set_cross_section( sigmaTotal, b->pythia.info.sigmaErr() );
 //       hepmcevt->set_cross_section( xsec );
        if (verbose) fmt::print(stderr, "[{}] xsec {} \n", cp.gid(), sigmaTotal);
 
-       // Here more
        try {b->ah->analyze( *hepmcevt ) ;} catch (const std::exception& e)
        {
          if (verbose) fmt::print(stderr, "[{}] exception in analyze: {}\n", cp.gid(), e.what());
        }
        delete hepmcevt;
        // TODO: make 1000 a free parameter a la msg_every
-       if (iEvent%100 == 0 && cp.gid()==0) {
+       if (iEvent%1000 == 0 && cp.gid()==0) {
           if ( (b->state.num_events <0) | b->state.num_events > lhaUpPtr->getSize()) {
              fmt::print(stderr, "[{}]a  {}/{} \n", cp.gid(),  iEvent+w[0], lhaUpPtr->getSize());
           }
@@ -367,108 +375,120 @@ void process_block_lhe(Block* b, diy::Master::ProxyWithLink const& cp, int size,
      }
   }
 
-  // Event loop is done, set xsection correctly and normalise histos
-  // TODO: check that this setting of the xs is really correct
   b->pythia.stat();
-//  b->ah->setCrossSection( sigmaTotal, b->pythia.info.sigmaGen()*1.0e9);
+
+  // Event loop is done, set xsection correctly and normalise histos
+  //SM b->ah->setCrossSection(b->pythia.info.sigmaGen() * 1.0E9);
+  b->ah->setCrossSection(b->pythia.info.sigmaGen() * 1.0E9,b->pythia.info.sigmaErr() * 1.0E9);
   b->ah->finalize();
 
-  // Push histos into block
-  // For Rivet 2.X, uncomment
-  //b->data = b->ah->getData();
-  // For Rivet 3.x, uncomment
+  b-> data = b->ah->getYodaAOs(true);
   
-  auto raos = b->ah->getRivetAOs();
-  // This is where we store the AOs to be written.
-  vector<YODA::AnalysisObjectPtr> output;
-
-  // First get all multiwight AOs
-  output.reserve(raos.size());
-
-  for ( auto rao : raos ) {
-    rao.get()->setActiveFinalWeightIdx(0);
-    if ( rao->path().find("/TMP/") != string::npos ) continue;
-    double sc = 1.0;
-    if (rao->hasAnnotation("ScaledBy")) {
-      sc = std::stod(rao->annotation("ScaledBy"));
-    }
-   // fmt::print(stderr, "sc [{}]   \n", sc);
-    auto yptr = rao.get()->activeYODAPtr();
-    output.push_back(yptr);
-  }
-
-  b-> data = output;
-
-  // SM TEST
-  // Debug write out --- uncomment to write each block's YODA file
-  //b->ah->writeData(std::to_string((1+npc)*(b->state.seed+cp.gid()))+".yoda");
-
-  // This is a bit annoying --- we need to unscale Histo1D and Histo2D beforge the reduction
-  // TODO: Figure out whether this is really necessary
-  
-  for (auto ao : b->data) {
-    if (ao->hasAnnotation("ScaledBy")) {
-      double sc = std::stod(ao->annotation("ScaledBy"));
-      //fmt::print(stderr, "sc data0 [{}]   \n", sc);
-    } 
-    if (ao->hasAnnotation("ScaledBy")) {
-      double sc = std::stod(ao->annotation("ScaledBy"));
-      if (ao->type()=="Histo1D") {
-         if (sc>0) {
-            dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
-//uncommenting
-     //       dynamic_cast<YODA::Histo1D&>(*ao).rmAnnotation("ScaledBy");
-            dynamic_cast<YODA::Histo1D&>(*ao).addAnnotation("OriginalScaledBy",1./sc);
-         }
-      } else if (ao->type()=="Histo2D") {
-         if (sc>0) {
-            dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
-//uncommenting
-    //        dynamic_cast<YODA::Histo2D&>(*ao).rmAnnotation("ScaledBy");
-            dynamic_cast<YODA::Histo2D&>(*ao).addAnnotation("OriginalScaledBy",1./sc);
-         }
-      }
-    } 
-    if (ao->hasAnnotation("ScaledBy")) {
-      double sc = std::stod(ao->annotation("ScaledBy"));
-      //fmt::print(stderr, "sc data1 [{}]   \n", sc);
-    } 
-  }
-  for (auto ao : b->data) {
-    if (ao->hasAnnotation("ScaledBy")) {
-      double sc = std::stod(ao->annotation("ScaledBy"));
-     // fmt::print(stderr, "sc data [{}]   \n", sc);
-    }
-  } 
 }
 
+//void process_block(Block* b, diy::Master::ProxyWithLink const& cp, int rank, std::vector<std::string> physConfig, std::vector<std::string> analyses, bool verbose)
+void process_block_lhe_simple(Block* b, diy::Master::ProxyWithLink const& cp, int size, int rank,  bool verbose, int npc, string in_file, int nMax)
+{
+  // This makes rivet only report ERRORs
+  // TODO: can we have a global flag to steer verbosity of all moving parts?
+  if (!verbose) Rivet::Log::setLevel("Rivet", Rivet::Log::ERROR);
+
+  // Minimise pythia's output
+  if (verbose) b->pythia.readString("Print:quiet = off");
+  else b->pythia.readString("Print:quiet = on");
+
+  // Configure pythia with a vector of strings
+  for (auto s  : b->state.conf) b->pythia.readString(s);
+  // Py8 random seed for this block read from point config
+  b->pythia.readString("Random:setSeed = on");
+  b->pythia.readString("Random:seed = " + std::to_string(b->state.seed+cp.gid()));
+  // TODO seed mode 3, i.e. draw nrank random numbers
+
+  //size_t nEvents  =  b->pythia.settings.mode("Main:NumberOfEvents");
+  size_t nEvents  =  nMax;
+  size_t ev_rank = floor(nEvents/size); // Total number of events this block/rank processes
+  size_t eventOffset = rank*ev_rank; //
+
+  if( nMax - eventOffset < 2*ev_rank ) ev_rank = nEvents - eventOffset;
+
+  fmt::print(stderr, "[{}] reads {}/{} events starting at {} \n", cp.gid(), ev_rank, nEvents, eventOffset);
+  fmt::print(stderr, " input size {} and rank {} and calculated ev_rank {} and event offset {} \n",size,rank,ev_rank,eventOffset);
+
+  b->pythia.settings.mode("Beams:frameType", 4);
+  b->pythia.settings.mode("Beams:nSkipLHEFatInit",eventOffset);
+
+  // PowHeg hook
+  shared_ptr<PowhegHooks> powhegHooks;
+  b->pythia.addUserHooksPtr( powhegHooks );
+
+  // All configurations done, initialise Pythia
+  b->pythia.init();
+
+  double sigmaTotal  = 0.;
+  double errorTotal  = 0.;
+  double xs = 0.;
+  for (int i=0; i < b->pythia.info.nProcessesLHEF(); ++i)
+    xs += b->pythia.info.sigmaLHEF(i);
+  if (verbose) fmt::print(stderr, "[{}] xs: {}\n", cp.gid(), xs);
+  double sigmaSample = 0., errorSample = 0.; // NOTE in Stefan's unlops this is reset for each to be merged multi
+
+  // Delete the AnalysisHandlerPtr to ensure there is no memory confusion
+  if (b->ah) delete b->ah;
+  
+  b->ah = new Rivet::AnalysisHandler;
+  b->ah->setIgnoreBeams();
+
+  // Add all analyses to rivet
+  // TODO: we may want to feed the "ignore beams" switch as well
+  for (auto a : b->state.analyses) {
+     b->ah->addAnalysis(a);
+     if (verbose) fmt::print(stderr, "[{}] add  ######## analysis {}\n", cp.gid(), a);
+  }
+
+  if (verbose) fmt::print(stderr, "[{}] starting event loop\n", cp.gid());
+  // The event loop
+  int nAbort = 5;
+  int iAbort = 0;
+
+  //  for (unsigned int iEvent = 0; iEvent < b->state.num_events; ++iEvent) {
+  for (unsigned int iEvent = 0; iEvent < ev_rank ; ++iEvent) {
+    if (!b->pythia.next()) {
+      if (++iAbort < nAbort) continue;
+      break;
+    }
+
+    // Get event weight(s).
+    double evtweight         = b->pythia.info.weight();
+    if (verbose) fmt::print(stderr, "[{}] after weight {} \n", cp.gid(), evtweight);
+
+// SM comment out temporarily until I understand weights
+//       hepmcevt->weights().push_back(evtweight*normhepmc);
+
+    HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
+    b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
+
+    try {b->ah->analyze( *hepmcevt ) ;} catch (const std::exception& e)
+    {
+      if (verbose) fmt::print(stderr, "[{}] exception in analyze: {}\n", cp.gid(), e.what());
+    }
+    delete hepmcevt;
+    if (iEvent%1000 == 0 && cp.gid()==0) fmt::print(stderr, "[{}]  {}/{} \n", cp.gid(),  iEvent, b->state.num_events);;
+  }
+
+  // Event loop is done, set xsection correctly and normalise histos
+  //SM b->ah->setCrossSection(b->pythia.info.sigmaGen() * 1.0E9);
+  b->ah->setCrossSection(b->pythia.info.sigmaGen() * 1.0E9,b->pythia.info.sigmaErr() * 1.0E9);
+  b->ah->finalize();
+
+  b-> data = b->ah->getYodaAOs(true);
+
+}
 
 void write_yoda(Block* b, diy::Master::ProxyWithLink const& cp, int rank, bool verbose)
 {
  if (verbose) fmt::print(stderr, "[{}] -- rank {} sees write_yoda \n", cp.gid(), rank);
- fmt::print(stderr, "[{}] -- rank {} sees write_yoda \n", cp.gid(), rank);
   if (rank==0 && cp.gid()==0) {
-    for (auto ao : b->buffer) {
-      //if (ao->hasAnnotation("OriginalScaledBy")) fmt::print(stderr,"got here\n");
-      if (ao->hasAnnotation("OriginalScaledBy"))
-      {
-        double sc = std::stod(ao->annotation("OriginalScaledBy"));
-        //double sc = std::stod(ao->annotation("ScaledBy"));
- fmt::print(stderr, "[{}] -- rank {} sees write_yoda {} \n", cp.gid(), rank, sc);
-        if (ao->type()=="Histo1D")
-        {
-         if (sc>0) {
-           dynamic_cast<YODA::Histo1D&>(*ao).scaleW(1./sc);
-         }
-        }
-        else if (ao->type()=="Histo2D")
-        {
-         if (sc>0) {
-           dynamic_cast<YODA::Histo2D&>(*ao).scaleW(1./sc);
-         }
-        }
-      }
-    }
+  
     if (verbose) fmt::print(stderr, "[{}] -- writing to file {}  \n", cp.gid(), b->state.f_out);
     YODA::WriterYODA::write(b->state.f_out, b->buffer);
   }
@@ -558,8 +578,6 @@ int main(int argc, char* argv[])
 
     MPI_Bcast(&nConfigs,   1, MPI_INT, 0, world);
 
-
-
     // ----- starting here is a lot of standard boilerplate code for this kind of
     //       application.
     int mem_blocks  = -1;  // all blocks in memory, if value here then that is how many are in memory
@@ -610,6 +628,9 @@ int main(int argc, char* argv[])
       if (runmode==2) {
          fmt::print(stderr, "\n  P E R F O R M A N C E S A M E \n");
       }
+      if (runmode==3) {
+         fmt::print(stderr, "\n  S I M P L E  L H E \n");
+      }
       fmt::print(stderr, "***********************************\n");
     }
 
@@ -653,6 +674,26 @@ int main(int argc, char* argv[])
          //cout.rdbuf (old);
          printf("[%i] took %.3f seconds\n",world.rank(), endtime-starttime);
        }
+       else if (runmode==3) {
+	 //master.foreach([world, verbose, ipc, in_file, nEvents, batch](Block* b, const diy::Master::ProxyWithLink& cp)
+			//{process_block_lhe_simple(b, cp, world.size(), world.rank(), verbose, ipc, in_file, nEvents, batch); });
+	 master.foreach([world, verbose, ipc, in_file, nEvents](Block* b, const diy::Master::ProxyWithLink& cp)
+			{process_block_lhe_simple(b, cp, world.size(), world.rank(), verbose, ipc, in_file, nEvents); });
+
+          diy::reduce(master,              // Master object
+                      assigner,            // Assigner object
+                      partners,            // RegularMergePartners object
+                      &reduceData<Block>);
+
+          //////This is where the write out happens --- the output file name is part of the blocks config
+          master.foreach([world, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
+                         { write_yoda(b, cp, world.rank(), verbose); });
+
+          // Wipe the buffer to prevent double counting etc.
+          master.foreach([world, verbose](Block* b, const diy::Master::ProxyWithLink& cp)
+	  { clear_buffer(b, cp, verbose); });
+       }
+
        else {
 
           master.foreach([world, verbose, ipc, in_file, nEvents, batch](Block* b, const diy::Master::ProxyWithLink& cp)

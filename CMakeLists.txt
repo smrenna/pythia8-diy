@@ -13,6 +13,13 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 set(CMAKE_CXX_STANDARD 14)
 
+
+if(HEPMC2)
+  message(STATUS "HEPMC2")
+  add_definitions(-DHEPMC2)
+  set(HEPMC2 ON)
+endif()
+
 # OSX flags
 if                          (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   add_definitions           (-DMAC_OSX)
@@ -38,11 +45,16 @@ if                          (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     endif                   ()
 endif                       (${CMAKE_SYSTEM_NAME} MATCHES      "Darwin")
 
+#SET(HDF5_LIBRARIES $(HDF5_LIB))
+if (HDF5_FOUND)
+  message("Found hdf5")
+endif()
+
  # MPI
 find_package                (MPI REQUIRED)
     set                     (libraries ${libraries} ${MPI_C_LIBRARIES} ${MPI_CXX_LIBRARIES})
 
-find_package                (HDF5)
+find_package                (HDF5 REQUIRED)
     set                     (libraries ${libraries} ${HDF5_C_LIBRARIES} ${HDF5_CXX_LIBRARIES})
 
 # Threads
@@ -85,9 +97,9 @@ include_directories         (${CMAKE_CURRENT_SOURCE_DIR}/include
                             ${HIGHFIVE_DIR}/include 
                             ${PYTHIA8_DIR}/include
                             ${FASTJET_DIR}/include
-                            ${HDF5_INC}
+#                            ${HDF5_INC}
                             SYSTEM ${HDF5_INC}
-                             SYSTEM ${MPI_INCLUDE_PATH}
+                            SYSTEM ${MPI_INCLUDE_PATH}
                             )
 
 # Figure out correct library suffix
@@ -156,7 +168,7 @@ endif()
 
 # If all found, add build target
 add_subdirectory        (src) 
-#add_subdirectory        (withlheh5) 
+add_subdirectory        (withlheh5) 
 
 ## Test if user has supplied -DHIGHFIVE_DIR                        
 if                          (LHEH5_DIR AND HIGHFIVE_DIR)

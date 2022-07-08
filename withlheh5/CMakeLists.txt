@@ -7,10 +7,11 @@ include_directories         (${CMAKE_CURRENT_SOURCE_DIR}/../include
 #                            ${LHEH5_DIR}/include
                             ${HIGHFIVE_DIR}/include
                             SYSTEM ${MPI_INCLUDE_PATH}
+                            SYSTEM ${HDF5_INC}
                             )
 
 
-#target_link_libraries       (withlheh5 ${libraries} diygen ${LHEH5_DIR}/lib/liblheh5${CMAKE_SHARED_LIBRARY_SUFFIX})
+#target_link_libraries       (withlheh5 ${libraries} diygen ${HDF5_DIR}/liblhdf5${CMAKE_SHARED_LIBRARY_SUFFIX})
 
 add_executable              (withlheh5 withlheh5.cpp)
 target_link_libraries (withlheh5 LINK_PUBLIC ${libraries} diygen)
