@@ -6,9 +6,11 @@
 #include "YODA/WriterYODA.h"
 #include "YODA/AnalysisObject.h"
 #include "Rivet/AnalysisHandler.hh"
+#include "Rivet/Tools/RivetYODA.hh"
 
-typedef std::shared_ptr<YODA::AnalysisObject> AO_ptr;
-typedef std::vector<AO_ptr> AnalysisObjects;
+//typedef std::shared_ptr<YODA::AnalysisObject> AO_ptr;
+//typedef YODA::AO* AO_ptr;
+typedef std::vector<YODA::AnalysisObjectPtr> AnalysisObjects;
 
 typedef Rivet::AnalysisHandler AH_ptr;
 //typedef std::vector<AH_ptr> AnalysisHandlers;
@@ -82,24 +84,30 @@ namespace diy {
   template <> struct Serialization<AnalysisObjects>
   {
     typedef AnalysisObjects::value_type::element_type data_type;
-    //    typedef std::vector<data_type*> Ptrs;
+    //typedef std::vector<data_type*> Ptrs;
+    typedef std::vector<YODA::AO*> Ptrs;
 
     static void save(diy::BinaryBuffer& bb, AnalysisObjects const& m)
     {
 
       std::ostringstream stream_a;
- 
-      YODA::WriterYODA::write(stream_a, begin(m), end(m));
-      //  YODA::WriterYODA::write(stream_a, a);
-      std::string s = stream_a.str();
+
+//      YODA::WriterYODA::write(stream_a, begin(m), end(m), "yoda");
+      YODA::write(stream_a, begin(m), end(m), "yoda");
+
+    //  std::string s = stream_a.str();
 
       // Unclear to SM why this was here
-      /*      std::ostringstream stream;
-      Ptrs out(m.size());
-      std::transform(m.cbegin(), m.cend(), out.begin(),
-		     [](AnalysisObjects::value_type const& x) { return x.get(); });
-      YODA::WriterYODA::write(stream, out);
-      std::string s = stream.str(); */
+      
+//      const vector<YODA::AnalysisObjectPtr> out(m.size());
+//      std::transform(m.cbegin(), m.cend(), out.begin(),
+//		  [](AnalysisObjects::value_type const& x) { return x.get(); });
+
+//      YODA::WriterYODA::write(stream_a, begin(out), end(out) );
+//      YODA::write(stream_a, begin(out), end(out), "");
+
+      std::string s = stream_a.str(); 
+      
 
       diy::save(bb, s.size());
       diy::save(bb, s.c_str(), s.size());
@@ -125,13 +133,16 @@ namespace YODA {
   void addVectors(AnalysisObjects &a, AnalysisObjects const &b) {  
 
     std::ostringstream stream_a;
-    YODA::WriterYODA::write(stream_a, begin(a), end(a));
+    //YODA::WriterYODA::write(stream_a, begin(a), end(a));
+    YODA::write(stream_a, begin(a), end(a), "yoda");
     std::string s_a = stream_a.str();
 
     std::ostringstream stream_b;
-    YODA::WriterYODA::write(stream_b, begin(b), end(b));
+    //YODA::WriterYODA::write(stream_b, begin(b), end(b));
+    YODA::write(stream_b, begin(b), end(b), "yoda");
     std::string s_b = stream_b.str();
 
+    //MRENNA
     bool preload(false);
     string fmt("yoda");
 
@@ -149,6 +160,8 @@ namespace YODA {
     ahmerge.finalize();
 
     a = ahmerge.getYodaAOs(true);
+    /*
+    */
     
   };
 }   
