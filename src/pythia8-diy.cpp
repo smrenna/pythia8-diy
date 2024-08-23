@@ -33,13 +33,15 @@
 #include "YODA/AnalysisObject.h"
 
 #include "Pythia8/Pythia.h"
-#include "Pythia8Plugins/HepMC2.h"
+//#include "Pythia8Plugins/HepMC2.h"
+#include "Pythia8Plugins/HepMC3.h"
 #include "Pythia8Plugins/ResonanceDecayFilterHook.h"
 #include "Rivet/AnalysisHandler.hh"
 //#include "Rivet/Analysis.hh"
 #undef foreach // This line prevents a clash of definitions of rivet's legacy foreach with that of DIY
 
-#include "HepMC/IO_GenEvent.h"
+//#include "HepMC/IO_GenEvent.h"
+#include "HepMC3/GenEvent.h"
 
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
@@ -62,6 +64,7 @@ typedef diy::RegularGridLink RCLink;
 typedef GenericBlock<Bounds, PointConfig, AnalysisObjects> Block;
 typedef ConfigBlockAdder<Bounds, RCLink, Block> AddBlock;
 
+/*
 void treeVertex(HepMC::GenEvent& event) {
     // Iterate over all vertices to find PS vertices
     int vtx_id = -1;
@@ -98,6 +101,7 @@ void treeVertex(HepMC::GenEvent& event) {
       } // Close if statement (vertex id==4)
     } // Close loop over vertices
 }
+*/
 
 void print_block(Block* b, const diy::Master::ProxyWithLink& cp)
 {
@@ -166,7 +170,7 @@ void process_block(Block* b, diy::Master::ProxyWithLink const& cp, bool verbose)
       if (++iAbort < nAbort) continue;
       break;
     }
-    HepMC::GenEvent* hepmcevt = new HepMC::GenEvent();
+    HepMC3::GenEvent* hepmcevt = new HepMC3::GenEvent();
     b->ToHepMC.fill_next_event( b->pythia, hepmcevt );
 
     try {b->ah->analyze( *hepmcevt ) ;} catch (const std::exception& e)

@@ -2,13 +2,14 @@
 #define DIYGEN_GenericBlock_HPP
 
 #include "Pythia8/Pythia.h"
-#include "Pythia8Plugins/HepMC2.h"
+//#include "Pythia8Plugins/HepMC2.h"
+#include "Pythia8Plugins/HepMC3.h"
 #include "Pythia8Plugins/ResonanceDecayFilterHook.h"
 
 #include "Rivet/AnalysisHandler.hh"
 #undef foreach // This line prevents a clash of definitions of rivet's legacy foreach with that of DIY
 
-#include "HepMC/IO_GenEvent.h"
+//#include "HepMC3/GenEvent.h"
 
 using namespace std;
 using namespace Pythia8;
@@ -85,7 +86,7 @@ struct GenericBlock
   Event& event = pythia.event;
   int nEvents;
   Rivet::AnalysisHandler *ah;
-  HepMC::Pythia8ToHepMC ToHepMC;
+  HepMC3::Pythia8ToHepMC3 ToHepMC;
   std::vector<std::string> physConfig; // This is the pythia steering card, line by line
   
 private:

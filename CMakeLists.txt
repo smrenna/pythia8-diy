@@ -104,7 +104,7 @@ set                         (libraries
                              ${libraries}
 			     ${YODA_DIR}/lib/libYODA${CMAKE_SHARED_LIBRARY_SUFFIX}
 			     ${RIVET_DIR}/lib/libRivet${CMAKE_SHARED_LIBRARY_SUFFIX}
-                             ${HEPMC_DIR}/lib/libHepMC${CMAKE_SHARED_LIBRARY_SUFFIX}
+                             ${HEPMC_DIR}/lib/libHepMC3${CMAKE_SHARED_LIBRARY_SUFFIX}
                              ${FASTJET_DIR}/lib/libfastjet${CMAKE_SHARED_LIBRARY_SUFFIX}
                              ${PYTHIA8_DIR}/lib/libpythia8${CMAKE_SHARED_LIBRARY_SUFFIX}
                              )
@@ -132,7 +132,7 @@ if(NOT RIVET_LIB)
 endif()
 
 find_library(HEPMC_LIB
-    NAMES libHepMC${CMAKE_SHARED_LIBRARY_SUFFIX}
+    NAMES libHepMC3${CMAKE_SHARED_LIBRARY_SUFFIX}
     HINTS "${HEPMC_DIR}/lib"
     )
 if(NOT HEPMC_LIB)
